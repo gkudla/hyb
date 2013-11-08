@@ -1,0 +1,187 @@
+#!/usr/bin/perl
+
+# usage: barcodes.pl M=1 barcodes.list in.fastq
+
+# NOTE: order of input files important
+# splits in.fastq into several files according to barcodes, and clips the barcodes
+
+# barcodes.list is in the format 	'NNNGTGAGC       Rrp44-exo-S1_#1_L5Bb
+#					 NNNCACTAGC      Rrp44-exo-S1_#3_L5Bc'
+# if barcode sequences start with a stretch of N's, then the corresponding nucleotides from each read are appended to read names
+# by default, no mutations in barcodes are allowed
+# to allow a mutation, set M=1
+#
+# 2013-03-26  A.J.Travis  Modified to append random barcodes to both headers
+
+my $RND_BARCODE_LEN=undef;
+my $SHORTEST_BARCODE_LEN=undef;
+my $LONGEST_BARCODE_LEN=undef;
+my $DEBUG=0;
+my $M = 0;
+my $MAX_BARCODES = 50;
+my $N_BARCODES = 0;
+my @barcode_nonrandom_fragments;
+my %barcode_nonrandom_lengths;
+my %barcode2fname;
+my %read2barcode;
+
+eval '$'.$1.'$2;' while $ARGV[0] =~ /^([A-Za-z_0-9]+=)(.*)/ && shift;
+
+open ( REF, ("<$ARGV[0]") ) or die "cannot create or open barcode reference file";
+while(<REF>){
+	chomp;
+	next if not $_ =~ /./;
+	my @Fld = split "\t",$_;
+	my $barcode_seq = $Fld[0];
+	my $barcode_nm = $Fld[1];
+	$barcode_seq =~ /^(N*)[ACGT]*/;
+	if (defined $RND_BARCODE_LEN and $RND_BARCODE_LEN != length( $1 ) ){
+		die "random barcode fragments must have the same length\n";
+	}
+	if ( ++$NBARCODES > $MAX_BARCODES ){
+		die "maximum number of barcodes exceeded\n";
+	}	
+	$RND_BARCODE_LEN = length( $1 );
+	my $frag = substr( $barcode_seq, $RND_BARCODE_LEN );
+	push @barcode_nonrandom_fragments, $frag;
+	my $curr_len = length( $frag );
+	$barcode_nonrandom_lengths{ $frag } = $curr_len;
+	$SHORTEST_BARCODE_LEN = $curr_len if ( not defined $SHORTEST_BARCODE_LEN or $curr_len < $SHORTEST_BARCODE_LEN );
+	$LONGEST_BARCODE_LEN = $curr_len if ( not defined $LONGEST_BARCODE_LEN or $curr_len > $LONGEST_BARCODE_LEN );
+	if ($RND_BARCODE_LEN){
+		$barcode2fname{ $frag } = $barcode_seq."_".$barcode_nm.".txt";
+	}
+	else{
+                $barcode2fname{ $frag } = $barcode_seq.".txt";
+	}
+}
+close REF;
+
+foreach my $nonrandom_fragment ( reverse @barcode_nonrandom_fragments ){
+	my $trailing_nt = $LONGEST_BARCODE_LEN - length($nonrandom_fragment);
+	if ( $M ){
+		foreach my $seq ( &single_mismatches( $nonrandom_fragment, $trailing_nt ) ){
+			$read2barcode{ $seq } = $nonrandom_fragment;
+		}
+	}
+	else{
+		foreach my $seq ( &no_mismatches( $nonrandom_fragment, $trailing_nt ) ){
+			$read2barcode{ $seq } = $nonrandom_fragment;
+		}
+	}
+}
+
+if( $DEBUG ){
+	foreach my $key ( keys %read2barcode ){
+		print "$key\t$read2barcode{$key}\n";
+	}
+	print "\n\n";
+	exit 0;
+}
+
+my %handles = get_write_handles( @barcode_nonrandom_fragments );
+open ( OTHERS, '>', "others.txt" ) or die "cannot open file others.txt for writing\n";
+
+open ( DATA, ("<$ARGV[1]") ) or die "cannot create or open data file";
+READ: while(<DATA>){
+	$nm = $_;
+	$seq = <DATA>;
+	$plus = <DATA>;
+	$qual = <DATA>;
+	if( $RND_BARCODE_LEN ){
+		$rnd_barcode = substr( $seq, 0, $RND_BARCODE_LEN );
+		chomp $nm;
+		$nm = $nm."_".$rnd_barcode."\n";
+
+		# append random barcodes to qual header if present
+		if ( $plus =~ /^\+\w+/ ) {
+			chomp $plus;
+			$plus = $plus."_".$rnd_barcode."\n";
+		}
+	}
+	$curr_frag = substr( $seq, $RND_BARCODE_LEN, $LONGEST_BARCODE_LEN );
+	$curr_barcode = $read2barcode{ $curr_frag };
+	$len = $RND_BARCODE_LEN + $barcode_nonrandom_lengths{ $curr_barcode };
+	if ( $handles{ $curr_barcode } ){
+		print {$handles{ $curr_barcode }} ($nm.substr($seq,$len).$plus.substr($qual,$len));
+	}
+	else{
+	        print OTHERS ("$nm$seq$plus$qual");
+	}
+}
+
+sub get_write_handles {
+	my @file_names = @_;
+	my %file_handles;
+	foreach (@file_names) {
+		open my $fh, '>', ($barcode2fname{ $_ }) or die "cannot open file for writing\n";
+		$file_handles{$_} = $fh;
+	}
+	return %file_handles;
+}
+
+sub single_mismatches {
+	my ($a,$trailing) = @_;
+	my %seen = ();
+	my @starts = ();
+	my @ends = ();
+	my @mismatches = ();
+	for (my $i=0; $i<length($a); $i++){
+		if( substr( $a,$i,1 ) =~ /[ACGT]/ ){
+			push @starts, (substr($a,0,$i)."A".substr($a,$i+1));
+			push @starts, (substr($a,0,$i)."C".substr($a,$i+1));
+			push @starts, (substr($a,0,$i)."G".substr($a,$i+1));
+			push @starts, (substr($a,0,$i)."T".substr($a,$i+1));
+			push @starts, (substr($a,0,$i)."N".substr($a,$i+1));
+		}
+	}
+	if ($trailing){
+		for (my $j=0; $j<4**$trailing; $j++){
+			push @ends, dec2nt( $j, $trailing );
+		}
+	}
+	else{
+		push @ends, "";
+	}
+	foreach my $start( @starts ){
+		foreach my $end ( @ends ){
+			push @mismatches, ($start.$end);
+		}
+	}
+	return grep !$seen{$_}++, @mismatches;
+}
+
+sub no_mismatches {
+        my ($a,$trailing) = @_;
+        my %seen = ();
+        my @starts = ();
+        my @ends = ();
+        my @mismatches = ();
+	push @starts, $a;
+        if ($trailing){
+                for (my $j=0; $j<4**$trailing; $j++){
+                        push @ends, dec2nt( $j, $trailing );
+                }
+        }
+        else{
+                push @ends, "";
+        }
+        foreach my $start( @starts ){
+                foreach my $end ( @ends ){
+                        push @mismatches, ($start.$end);
+                }
+        }
+        return grep !$seen{$_}++, @mismatches;
+}
+
+sub dec2nt {
+	my $str = unpack("B32", pack("N", shift)); # convert a decimal to a binary
+	my $n = shift;
+	my %nt=( '00', 'A', '01', 'C', '10', 'G', '11', 'T' );
+	my $ret;
+	my $binary = substr( $str, -2*$n );
+	for ( my $i=0; $i<2*$n; $i+=2 ){
+		$ret .= $nt{substr($binary,$i,2)};
+	}
+	return $ret;
+}

@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+
+# extracts a subset of entries from a .txt (solexa raw data), .fasta, .blast, .hyb, .novo or .tab file
+# example: getseqs reference.list input.fasta > output.fasta
+# reference.list has one or more columns, and has gene names in column 1
+# input can be in one of several formats
+# output has the same format as input
+
+$, = ' ';		# set output field separator
+$\ = "\n";		# set output record separator
+$SOLEXA_TXT = 0;	# set to 1 to interpret txt file as solexa raw data
+$REVERSE = 0;		# set to 1 to reject entries found in reference file (works with hyb file only)
+$GFF_REFERENCE = 0;	# set to 1 to extract gene names from "ID=XX;" entries in gff file rather than from first column
+
+eval '$'.$1.'$2;' while $ARGV[0] =~ /^([A-Za-z_0-9]+=)(.*)/ && shift;
+			# process any FOO=bar switches
+
+line: while (<>) {
+
+	chomp;	# strip record separator
+	@Fld = split(' ', $_, -1);
+	$nm = $Fld[0];
+	$nm =~ s/^[@>]+//;
+
+
+########################################################## generating reference list ##########################################################
+
+	if ($. == ($.-$FNRbase) && !$GFF_REFERENCE) {
+		$found{$nm}++;
+	}
+
+	if ($. == ($.-$FNRbase) && $GFF_REFERENCE) {
+		if( $_ =~ /ID=(.+?);/ ){
+			$found{$1}++;
+		}
+		elsif( $_ =~ /Name=(.+?);/ ){
+			$found{$1}++;
+		}
+	}
+
+###################################### extracting entires matching reference from target file #################################################
+
+	# REVERSE mode, hyb file
+
+	if ($. != ($.-$FNRbase) && $ARGV =~ /hyb$/ && $REVERSE) {
+		if (!$found{$nm}) {
+			print $_;
+		}
+		next line;
+	}
+
+	# .fasta file, one line per sequence
+
+	if ($. != ($.-$FNRbase) && $ARGV =~ /fasta$/) {
+		if ($found{$nm}) {
+			print $_;
+			$_ = &Getline0();
+			print $_;
+		}
+	}
+
+	# solexa data - requires setting option SOLEXA_TXT=1
+
+	if ($. != ($.-$FNRbase) && ($ARGV =~ /fastq$/ || $SOLEXA_TXT==1) ) {
+		if ($found{$nm}) {
+			print $_;
+			$_ = &Getline0();
+			print $_;
+			$_ = &Getline0();
+			print $_;
+			$_ = &Getline0();
+			print $_;
+		}
+	}
+
+	# novoalign data or blast output
+
+	if ($. != ($.-$FNRbase) && ($ARGV =~ /novo$|blast$|tab$|hyb$|txx$/ || ( $ARGV =~ /txt$/ && $SOLEXA_TXT==0 ) ) ) {
+		if ($nm =~ /^#/ || (!($REVERSE) && $found{$nm}) || ($REVERSE && !($found{$nm}))) {
+			print $_;
+		}
+	}
+}
+continue {
+	$FNRbase = $. if eof;
+}
+
+sub Getline0 {
+	$FNRbase = $. if eof;
+	if ($getline_ok = (($_ = <>) ne '')) {
+	chomp;	# strip record separator
+	@Fld = split(' ', $_, -1);
+	}
+	$_;
+}

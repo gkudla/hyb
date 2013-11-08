@@ -1,0 +1,14 @@
+#!/usr/bin/perl -w
+# @(#)fasta-len  2011-06-05  A.J.Travis
+
+#
+# Print length of fasta records
+#
+
+use Bio::SeqIO;
+
+my $seqio = Bio::SeqIO->new( -file => $ARGV[0], '-format' => 'Fasta' );
+while ( my $seq = $seqio->next_seq ) {
+    $length = $seq->length;
+    print "$length\n";
+}

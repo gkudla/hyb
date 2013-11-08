@@ -1,0 +1,33 @@
+#!/usr/bin/awk -f
+
+BEGIN{
+	SORTED=0
+	print "type1:type2\tcollapsed\tall"
+}
+
+{
+	split($1,cnt,"_")
+	split($4,nm1,"_")
+	split($10,nm2,"_")
+	if (SORTED){
+		if(nm1[4] < nm2[4]){
+			name=(nm1[4] ":" nm2[4])
+		}
+		else{
+			name=(nm2[4] ":" nm1[4])
+		}
+	}
+	else{
+			name=(nm1[4] ":" nm2[4])
+	}
+	comp[name]++
+	dec[name]+=cnt[2]
+}
+
+END{
+	sort = "sort -k 2nr"
+	for (i in comp){
+		print i "\t" comp[i] "\t" dec[i] | sort
+	}
+}
+

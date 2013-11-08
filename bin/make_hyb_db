@@ -1,0 +1,18 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+echo "usage: $0 input.fasta"
+exit 1
+fi
+
+if [ ! -e $1 ]; then
+echo "usage: $0 input.fasta"
+echo "error: $1 file not found"
+exit 1
+fi
+
+makeblastdb -in $1 -dbtype nucl -input_type fasta -hash_index -out ${1/.fasta/} -logfile ${1/.fasta/.log}
+faToTwoBit $1 ${1/fasta/2bit}
+bowtie2-build $1 ${1/.fasta/}
+fasta2tab.awk $1 > ${1/fasta/tab}
+

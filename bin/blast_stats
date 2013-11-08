@@ -1,0 +1,21 @@
+#!/usr/bin/awk -f
+
+BEGIN{
+        print "biotype\tcollapsed\tall"
+}
+
+{
+	split($1,cnt,"_")
+	split($2,nm,"_")
+	name=nm[4]
+	comp[name]++
+	dec[name]+=cnt[2]
+}
+
+END{
+        sort = "sort -k 2nr"
+	for (i in comp){
+		print i "\t" comp[i] "\t" dec[i] | sort
+	}
+}
+

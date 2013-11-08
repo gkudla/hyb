@@ -1,0 +1,14 @@
+#!/usr/bin/awk -f
+
+{
+	cnt[$1]++
+	if (cnt[$1]==1){
+		print $0
+		eval=$11
+	}
+	if (cnt[$1]!=1 && $11==eval){
+		print $0
+	}
+}
+
+

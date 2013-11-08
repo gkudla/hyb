@@ -1,0 +1,105 @@
+#!/usr/bin/perl
+
+# version 1.3 changes:	to improve speed, when merging hybrids, compare only hybrids within the same pair of genes
+
+# version 1.2 changes:	merging hits mapped in the antisense orientation to the reference sequence is implemented (in the library Hybrid_long_2.pm used by this version)
+
+# version 1.1 changes:	default values for TARGET and GUIDE set to "." (all hybrids accepted)
+#			merging of hybrids in both orientations implemented; to do this, set TWO_WAY_MERGE=1
+# 			reporting seq_ID's of all hybrids in cluster implemented; to do this, set PRINT_SEQ_IDS=1
+#			COLUMN_16 in the output file contains some additional information in the format count_total=xxx;... (see below)
+
+# inputs .hyb file (with an optional COLUMN_16, see below)
+# outputs clustered .hyb file: all hybrids with overlap in both TARGET and GUIDE are merged
+# CAUTION: version 1.0 does not merge hybrids if the order of the bits is different, versions from 1.1 do, depending on the settings
+
+# input .hyb file can be in the normal 15-column .hyb format, or in one of the following formats:
+# (1) 15-column format with column 16 containing an integer: this is interpreted as count of hybrids
+# or (2) 15-column with column 16 containing information in the format count_total=xxx;...
+
+# the output .hyb file has an additional column: COLUMN_16 in the format count_total=xxx;count_last_clustering=yyy;...
+# fields in output column 16:
+# count_total, total number of hybrids in cluster;
+# count_last_clustering, number of items clustered in the current run; typically this will indicate the number of experiments in the cluster;
+# two_way_merged, 0 if all the hybrids were in the same orientation, 1 otherwise;
+# seq_IDs_in_cluster, list of all seq_IDs forming the cluster;
+
+use warnings;
+use strict;
+# use lib '/homes/tollervey/lib';
+use Hybrid_long_2;
+my @all_hits;
+my %HoA_ref_hits;
+my $EXP = "default";
+my $TARGET = ".";
+my $GUIDE = ".";
+my $VERBOSE = 0;
+my $TWO_WAY_MERGE=0;
+my $PRINT_SEQ_IDS=0;
+
+eval '$'.$1.'$2;' while $ARGV[0] =~ /^([A-Za-z_0-9]+=)(.*)/ && shift;
+
+LINE:	while(<>){
+
+	chomp;
+	my $curr_hit = new Hybrid_long();
+	my $reversed_hit;
+	$curr_hit -> initialize_hyb( $_, $EXP ) or next LINE;
+	$curr_hit -> check_hit_names( $TARGET, $GUIDE ) or next LINE;
+	if ( $VERBOSE ) { $curr_hit -> print_hyb(); print("\n"); }
+	if ( $TWO_WAY_MERGE ){
+	        $reversed_hit = new Hybrid_long();
+	        $reversed_hit -> initialize_hyb( $_, $EXP ) or next LINE;
+		$reversed_hit -> reverse_bit_order();
+		if ( $VERBOSE ) { $reversed_hit -> print_hyb(); print("\n"); }
+	}
+
+##############################################################################################
+# below: compare current hit with list of all previously found hits
+# the list of previously found hits is amended either by putting the current hit into it
+# or by merging the current hit with one of the previously found hits
+##############################################################################################
+
+	HITS: foreach my $old_hit( @{ $HoA_ref_hits { $curr_hit -> get_sorted_bit_names() } } ){
+		if ( $old_hit -> overlaps( $curr_hit ) ){
+			if ( $VERBOSE ) { print "OVERLAP FUNCTION:\n"; $curr_hit -> print_hyb(); print "\nOVERLAPS\n"; $old_hit -> print_hyb(); print "\n"; }
+			$curr_hit -> found_overlap( 2 );
+			$old_hit -> merge_with( $curr_hit );
+			if ( $VERBOSE ) { print "MERGE FUNCTION:\n"; $old_hit -> print_hyb(); print "\nCREATED\n\n"; }
+			last HITS;
+		}
+		elsif ( $TWO_WAY_MERGE && ($old_hit -> overlaps( $reversed_hit )) ){
+			if ( $VERBOSE ) { print "OVERLAP FUNCTION:\n"; $reversed_hit -> print_hyb(); print "\nOVERLAPS\n"; $old_hit -> print_hyb(); print "\n"; }
+			$reversed_hit -> found_overlap( 2 );
+			$curr_hit -> found_overlap( 2 );
+			$old_hit -> merge_with( $reversed_hit );
+			$old_hit -> twoway_overlap( 1 );
+			if ( $VERBOSE ) { print "MERGE FUNCTION:\n"; $old_hit -> print_hyb(); print "\nCREATED\n\n"; }
+			last HITS;
+		}
+	}
+	push ( @all_hits, $curr_hit ) unless ( $curr_hit -> found_overlap() > 1 );
+	push ( @{ $HoA_ref_hits { $curr_hit -> get_sorted_bit_names() } }, $curr_hit ) unless ( $curr_hit -> found_overlap() > 1 );
+}
+	
+##############################################################################################
+# print all the hits found
+##############################################################################################
+
+if ( !$VERBOSE ){
+	foreach my $hit( @all_hits ){
+		my $count_total = $hit -> count();
+		my $count_last_clustering = $hit -> found_overlap();
+		my $ovlp_two_ways = $hit -> twoway_overlap();
+		my $seq_IDs = join( ",", $hit -> seq_ID_list() );
+		
+		$hit -> print_hyb_15_columns();
+		printf("\tcount_total=%s;count_last_clustering=%s;two_way_merged=%s;", $count_total, $count_last_clustering, $ovlp_two_ways);
+		if ($PRINT_SEQ_IDS){
+			printf("seq_IDs_in_cluster=%s;", $seq_IDs);
+		}
+		printf "\n";
+	}
+}
+
+

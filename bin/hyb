@@ -1,0 +1,1311 @@
+#!/usr/bin/make -rRf
+# @(#)hyb  2013-12-20  A.J.Travis, G.Kudla and J.Moody
+
+#
+# hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
+#
+# Tony Travis, University of Aberdeen, Institute of Biological and Environmental
+# Sciences, Aberdeen, Scotland (UK); Greg Kudla and Jonathan Moody, University
+# of Edinburgh, Institute of Genetics and Molecular Medicine, Western General
+# Hospital, Edinburgh, Scotland (UK); Ola Helwak, University of Edinburgh,
+# Wellcome Trust Centre for Cell Biology, Edinburgh, Scotland (UK); Sander
+# Granneman, University of Edinburgh, Centre for Structural and Molecular
+# Biology, Edinburgh, Scotland (UK).
+#
+
+# Use "bash" shell and return last non-zero status of pipeline
+SHELL := /bin/bash -o pipefail
+
+#
+# Default values for command-line arguments
+#
+
+# input and demultiplexing
+in ?=
+id ?=
+format ?= fastq
+code ?=
+miss ?= 0
+
+# quality control (default miRCat33 3' linker)
+qc ?= flexbar
+qual ?= auto
+link ?= TGGAATTCTCGGGTGCCAAGGC
+min ?= 4
+len ?= 17
+trim ?= 0
+filt ?= 0
+pc ?= 0
+
+# read alignment
+align ?= bowtie2
+db ?=
+word ?= 11
+eval ?= 0.1
+
+# hybrid detection
+ref ?=
+anti ?= 0
+type ?= all
+fold ?= UNAfold
+pref ?= mim
+hval ?= 0.1
+hmax ?= 10
+gmax ?= 4
+
+#
+# Check all variables set on command-line are valid
+#
+args = in id format code miss qc qual link min len trim filt pc align db word eval ref anti type fold pref hval hmax gmax
+
+# don't allow null or negative values or wildcards
+gatekeeper := $(foreach var,$(.VARIABLES), \
+    $(if $(findstring command line,$(origin $(var))), \
+        $(if $(filter $(var),$(args)),, \
+            $(error "hyb: unknown argument $(var)") \
+        ) \
+        $(if $($(var)),, \
+            $(error "hyb: can't set null value in $(var)=") \
+        ) \
+        $(if $(filter -%,$($(var))), \
+            $(error "hyb: can't set negative value '-' in $(var)=$($(var))"), \
+        ) \
+        $(if $(findstring *,$($(var))), \
+            $(error "hyb: can't use wildcard '*' in $(var)=$($(var))") \
+        ) \
+    ) \
+)
+
+#
+# (qc) Quality control
+#
+ifeq ($(filter $(qc),flexbar fastx none),)
+    $(error "hyb: unknown qc=$(qc)")
+endif
+
+#
+# Sequence alignment
+#
+ifeq ($(filter $(align),blastall blastn blat pblat bowtie2 none),)
+    $(error "hyb: unknown align=$(align)")
+endif
+
+#
+# file format
+#
+ifeq ($(filter $(format),fastq fasta comp blast),)
+    $(error "hyb: unknown format=$(format)")
+else ifeq ($(format),blast)
+    ifneq ($(align),none)
+        ifeq ($(origin align), command line)
+            $(error "hyb: can't use align=$(align) with format=$(format)")
+        endif
+        align = none
+    endif
+endif
+
+#
+# (type) Type of hybrid selected
+#
+ifeq ($(filter $(type),mim sno all),)
+    $(error "hyb: unknown type=$(type)")
+endif
+
+#
+# Preferred type of hybrid
+#
+ifeq ($(filter $(pref),none mim),)
+    $(error "hyb: unknown pref=$(type)")
+endif
+
+#
+# Add directory containing "hyb" to PATH
+#
+HYB_BIN ?= $(shell dirname $(MAKEFILE_LIST))
+export PATH := $(HYB_BIN):$(PATH)
+
+#
+# Other "hyb" directories
+#
+HYB_HOME ?= $(shell dirname $(HYB_BIN))
+ifeq ($(HYB_HOME),.)
+    HYB_HOME := ..
+endif
+HYB_LIB ?= $(HYB_HOME)/lib
+HYB_DATA ?= $(HYB_HOME)/data
+HYB_DB ?= $(HYB_DATA)/db
+HYB_REF ?= $(HYB_DATA)/reference
+TMP ?= .
+DIRECTORIES = $(HYB_BIN) $(HYB_HOME) $(HYB_LIB) $(HYB_DATA) $(TMP)
+
+gatekeeper := $(foreach file, $(DIRECTORIES), \
+    $(if $(wildcard $(file)),, \
+        $(error "hyb: can't access directory $(file)") \
+    ) \
+)
+
+#
+# Perl libraries
+#
+export PERL5LIB := $(HYB_LIB):$(PERL5LIB)
+
+#
+# Tollervey Lab programs
+#
+FASTQ_DETECT ?= $(HYB_BIN)/fastq_detect
+BARCODES ?= $(HYB_BIN)/barcodes
+SOLEXA2FASTA ?= $(HYB_BIN)/solexa2fasta.awk
+FASTA2TAB ?= $(HYB_BIN)/fasta2tab.awk
+TAB2COMP ?= $(HYB_BIN)/make_comp_fasta.pl
+COLLAPSE ?= $(HYB_BIN)/collapse_barcoded_tab.awk
+TAB2FASTA ?= $(HYB_BIN)/tab2fasta.awk
+HISTOGRAM ?= $(HYB_BIN)/histogram.pl
+MTOPHITS ?= $(HYB_BIN)/mtophits_blast
+CREATE_REF ?= $(HYB_BIN)/create_reference_file.pl
+REMOVE_DUP_HIT ?= $(HYB_BIN)/remove_duplicate_hits_blast.pl
+GET_MTOP ?= $(HYB_BIN)/get_mtop_hybrids.pl
+GET_SEQ ?= $(HYB_BIN)/getseqs
+TXT2HYB ?= $(HYB_BIN)/txt2hyb.awk
+REMOVE_DUP_HYB ?= $(HYB_BIN)/remove_duplicate_hybrids_hOH5.pl
+HYB2FASTA ?= $(HYB_BIN)/hyb2fasta_bits_allRNAs.awk
+HYB2FASTA_MIM ?= $(HYB_BIN)/hyb2fasta_bits.awk
+CT2B ?= $(HYB_BIN)/Ct2B_GK_3.pl
+MAKE_VIENNA ?= $(HYB_BIN)/make_vienna
+NICER_VIENNA ?= $(HYB_BIN)/make_nicer_vienna_hOH5.awk
+ADD_DG_HYB ?= $(HYB_BIN)/add_dG_hyb.pl
+FOLD_VIENNAD ?= $(HYB_BIN)/analyse_miRNA_folding_viennad.sh
+FOLD_VIENNAD_GK ?= $(HYB_BIN)/analyse_miRNA_folding_viennad_GK.awk
+REARRANGE_BITS ?= $(HYB_BIN)/rearrange_miRNA_mRNA_bits.awk
+ANNOTATE_HYB ?= $(HYB_BIN)/make_hybrid_annotation_table.pl
+COMBINE_HYB ?= $(HYB_BIN)/combine_hyb_merge
+GET_SINGLE_STATS ?= $(HYB_BIN)/blast_stats
+GET_HYB_STATS ?= $(HYB_BIN)/hybrid_stats
+GET_HYB_FREQ ?= $(HYB_BIN)/hybrids_stats_2.sh
+BLAST_HITS ?= $(HYB_BIN)/blast-hits
+EXTRACT ?= $(HYB_BIN)/extract_listed.awk
+COMBINE_GFF ?= $(HYB_BIN)/combine_gff_merge_1.2.pl
+BLAST2SGR ?= $(HYB_BIN)/blast2sgr.awk
+SAM2BLAST ?= $(HYB_BIN)/sam2blast
+
+INTERNAL := \
+    $(FASTQ_DETECT) $(BARCODES) $(SOLEXA2FASTA) $(FASTA2TAB) $(COLLAPSE) $(TAB2FASTA) $(HISTOGRAM) \
+    $(MTOPHITS) $(CREATE_REF) $(REMOVE_DUP_HIT) $(GET_MTOP) $(GET_SEQ) $(TXT2HYB) \
+    $(REMOVE_DUP_HYB) $(HYB2FASTA) $(HYB2FASTA_MIM) $(CT2B) $(NICER_VIENNA) $(ADD_DG_HYB) \
+    $(FOLD_VIENNAD) $(FOLD_VIENNAD_GK) $(REARRANGE_BITS) $(ANNOTATE_HYB) $(COMBINE_HYB) $(GET_SINGLE_STATS) \
+    $(GET_HYB_STATS) $(GET_HYB_FREQ) $(BLAST_HITS) $(EXTRACT) $(COMBINE_GFF) \
+    $(BLAST2SGR) $(SAM2BLAST)
+
+gatekeeper := $(foreach file, $(INTERNAL), \
+    $(if $(wildcard $(file)),, \
+        $(error "hyb: can't access program $(file)") \
+    ) \
+)
+
+#
+# FastX Toolkit
+# http://hannonlab.cshl.edu/fastx_toolkit/
+#
+ifeq ($(qc),fastx)
+    FASTX_TRIM ?= $(shell which fastq_quality_trimmer)
+    FASTX_FILT ?= $(shell which fastq_quality_filter)
+    FASTX_CLIP ?= $(shell which fastx_clipper)
+    ifeq ($(and $(FASTX_TRIM),$(FASTX_FILT),$(FASTX_CLIP)),)
+        $(error "hyb: FastX toolkit not installed")
+    endif
+endif
+
+#
+# Flexbar
+# http://sourceforge.net/projects/flexbar/
+#
+ifeq ($(qc),flexbar)
+    FLEXBAR ?= $(shell which flexbar)
+    FLEXBAR_PARAM ?= -u 3 -m $(len) -n $(HYB_THREADS)
+    ifeq ($(FLEXBAR),)
+        $(error "hyb: Install Flexbar or set qc=none")
+    else
+        FLEXBAR_VERSION ?= $(word 3, $(shell $(FLEXBAR) --version))
+    endif
+endif
+
+#
+# FastQC
+# http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+#
+ifneq ($(filter check,$(MAKECMDGOALS)),)
+    FASTQC ?= $(shell which fastqc)
+    FASTQC_PARAM ?= -q -k 8
+    ifeq ($(FASTQC),)
+        $(error "hyb: FASTQC not installed")
+    endif
+endif
+
+#
+# Legacy BLAST
+# ftp://ftp.ncbi.nlm.nih.gov/blast/executables/release/LATEST/
+#
+ifeq ($(align),blastall)
+    BLASTALL ?= $(shell which blastall)
+    BLASTALL_PARAM ?= -W $(word) -e $(eval) -a $(HYB_THREADS)
+    ifeq ($(BLASTALL),)
+        $(error "hyb: Legacy BLAST not installed")
+    endif
+endif
+
+#
+# BLAST+
+# ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
+#
+ifeq ($(align),blastn)
+    BLASTN ?= $(shell which blastn)
+    BLASTN_PARAM ?= -word_size $(word) -evalue $(eval) -num_threads $(HYB_THREADS)
+    ifeq ($(BLASTN),)
+        $(error "hyb: BLAST+ not installed")
+    endif
+endif
+
+#
+# BLAT
+# http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
+#
+ifeq ($(align),blat)
+    BLAT ?= $(shell which blat)
+    BLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15
+    ifeq ($(BLAT),)
+        $(error "hyb: BLAT not installed")
+    endif
+endif
+
+#
+# PBLAT
+# http://code.google.com/p/pblat/
+#
+ifeq ($(align),pblat)
+    PBLAT ?= $(shell which pblat)
+    PBLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15 -threads=$(HYB_THREADS)
+    ifeq ($(PBLAT),)
+        $(error "hyb: PBLAT not installed")
+    endif
+endif
+
+#
+# Bowtie2
+# http://bowtie-bio.sourceforge.net/bowtie2
+#
+ifeq ($(align),bowtie2)
+    BOWTIE2 ?= $(shell which bowtie2)
+    BOWTIE2_PARAM ?= -D 20 -R 3 -N 0 -L 16 -k 20 --local -i S,1,0.50 --score-min L,18,0 --ma 1 --np 0 --mp 2,2 --rdg 5,1 --rfg 5,1 -p $(HYB_THREADS)
+    ifeq ($(BOWTIE2),)
+        $(error "hyb: Bowtie2 not installed")
+    endif
+endif
+
+#
+# UNAfold
+# http://mfold.rna.albany.edu/?q=DINAMelt/software
+#
+ifneq ($(filter analyse,$(MAKECMDGOALS)),)
+    ifeq ($(fold),UNAfold)
+        HYBRID_MIN ?= $(shell which hybrid-min)
+        ifeq ($(HYBRID_MIN),)
+            $(error "hyb: UNAfold not installed")
+        endif
+    endif
+endif
+
+#
+# Vienna RNA package
+# http://www.tbi.univie.ac.at/~ronny/RNA
+#
+ifneq ($(filter analyse,$(MAKECMDGOALS)),)
+    ifeq ($(fold),vienna)
+        RNAUP ?= $(shell which RNAup)
+        ifeq ($(RNAUP),)
+            $(error "hyb: Vienna RNA package not installed")
+        endif
+    endif
+endif
+
+EXTERNAL := \
+    $(FASTX_TRIM) $(FASTX_FILT) $(FASTX_CLIP) $(FLEXBAR) $(FASTQC) \
+    $(BLASTALL) $(BLASTN) $(BLAT) $(BOWTIE2) $(HYBRID_MIN) $(RNAUP)
+
+#
+# system info
+#
+cpuinfo := $(wildcard /proc/cpuinfo)
+ifeq ($(cpuinfo),)
+    CORES ?= 1
+else
+    CORES ?= $(shell awk '/physical id/{id=$$4};/core id/{print id" "$$4}' $(cpuinfo) | sort | uniq | wc -l)
+endif
+
+#
+# Threads - Default: use 50% of available cores
+#
+ifeq ($(CORES),1)
+    ifeq ($(align),pblat)
+        $(error "hyb: pblat alignment with single thread - use blat instead")
+    else
+        HYB_THREADS ?= 1
+    endif
+else
+    HYB_THREADS ?= $(shell echo $$(($(CORES)/2)))
+endif
+
+#
+# debug mode - don't do run-time checks if -n flag is active
+#
+ifeq ($(findstring Rrn,$(MAKEFLAGS)),)
+    mode = normal
+else
+    mode = debug
+endif
+
+#
+# Override variables inherited by recursive make
+#
+ifneq ($(MAKELEVEL),0)
+    override code =
+endif
+
+# don't do alignment
+ifeq ($(align),none)
+    ifeq ($(origin qc),command line)
+        ifneq ($(qc),none)
+            $(error "hyb: can't use qc=$(qc) with align=none")
+        endif
+    else
+        qc = none
+    endif
+    gatekeeper := $(foreach var,$(.VARIABLES), \
+        $(if $(findstring command line,$(origin $(var))), \
+            $(if $(filter $(var),word eval), \
+                $(error "hyb: can't use $(var)=$($(var)) with align=none"), \
+            ) \
+        ) \
+    )
+    word =
+    eval =
+endif
+
+# don't do pre-processing
+ifeq ($(qc),none)
+    gatekeeper := $(foreach var,$(.VARIABLES), \
+        $(if $(findstring command line,$(origin $(var))), \
+            $(if $(filter $(var),link min len trim filt pc), \
+                $(error "hyb: can't use $(var)= with qc=none"), \
+            ) \
+        ) \
+    )
+    link =
+    min =
+    len =
+    trim =
+    filt =
+    pc =
+endif
+
+#
+# Input file
+#
+ifneq ($(in),)
+    # check input file exists
+    ifeq ($(wildcard $(in)),)
+        $(error "hyb: can't open $(in)")
+    endif
+
+    # check if file is FASTQ and detect quality offset
+    ifeq ($(format),fastq)
+        ifeq ($(qual),auto)
+            qual = $(shell $(FASTQ_DETECT) -q $(in))
+            ifeq ($(qual),error: not FASTQ)
+                $(error "hyb: $(in) not FASTQ")
+            endif
+        endif
+
+        # gzip archive of bar-coded FASTQ reads
+        ifeq ($(suffix $(in)),.gz)
+            read = $(notdir $(basename $(in)))
+
+        # uncompressed file of FASTQ reads
+        else
+            read = $(in)
+        endif
+    endif
+endif
+
+#
+# Sample ID
+#
+ifeq ($(id),)
+    ifeq ($(format),fastq)
+        id = $(notdir $(basename $(read)))
+    else
+        id = $(word 1,$(subst _comp_, ,$(notdir $(basename $(in)))))
+    endif
+endif
+
+#
+# Bar-codes
+#
+ifneq ($(code),)
+    ifeq ($(mode),debug)
+
+        # Samples to analyse
+        SAMPLES = `awk '{print $$1"_"$$2".txt"}' $(code)`
+    else
+
+        # check bar-code file exists
+        ifeq ($(wildcard $(code)),)
+            $(error "hyb: can't open $(code)")
+        endif
+
+        # Samples to analyse
+        SAMPLES = $(shell awk '{print $$1"_"$$2".txt"}' $(code))
+    endif
+endif
+
+#
+# Alignment database
+#
+ifeq ($(format),blast)
+    ifneq ($(db),)
+        $(error "hyb: can't use db=$(db) with format=blast")
+    endif
+
+    # extract db name from BLAST format input file name
+    db = $(lastword $(basename $(subst _comp_, ,$(in))))
+endif
+
+ifneq ($(db),)
+
+    # database index
+    db_name = $(notdir $(basename $(db)))
+    ifneq ($(filter $(align),blastall blastn),)
+        db_path = $(HYB_DB)/$(db)
+        ifneq ($(mode),debug)
+            ifeq ($(wildcard $(db_path).nin),)
+                db_path = $(HYB_DB)/$(db).fasta
+            endif
+            ifeq ($(wildcard $(db_path).nin)$(wildcard $(db_path).*[0-9].nin),)
+                $(error "hyb: can't open BLAST database $(db_path)")
+            endif
+        endif
+    else ifneq ($(filter $(align),blat pblat),)
+        db_path = $(HYB_DB)/$(db).2bit
+        ifneq ($(mode),debug)
+            ifeq ($(wildcard $(db_path)),)
+                $(error "hyb: can't open BLAT database $(db_path)")
+            endif
+        endif        
+    else ifeq ($(align),bowtie2)
+        db_path = $(HYB_DB)/$(db)
+        ifneq ($(mode),debug)
+            ifeq ($(wildcard $(db_path).1.bt2),)
+                $(error "hyb: can't open Bowtie2 database $(db_path)")
+            endif
+        endif
+    else ifeq ($(align),none)
+        db_path =
+    else
+        $(error "hyb: $(align) alignment not available")
+    endif
+
+    # database sequences in TAB delimited format
+    db_tab = $(HYB_DB)/$(db_name).tab
+    ifneq ($(mode),debug)
+        ifeq ($(wildcard $(db_tab)),)
+            $(error "hyb: can't open TAB file $(db_tab)")
+        endif
+    endif
+endif
+
+#
+# (ref) Reference file of BLAST hit priorities
+#
+ifneq ($(ref),)
+    ifneq ($(mode),debug)
+        ifneq ($(wildcard $(ref)),)
+            ref_path = $(ref)
+        else
+            ref_name = $(notdir $(basename $(ref)))
+            ref_path = $(HYB_REF)/$(ref_name)
+            ifeq ($(wildcard $(ref_path)),)
+                ref_path = $(HYB_REF)/$(ref).ref
+            endif
+            ifeq ($(wildcard $(ref_path)),)
+                $(error "hyb: can't open BLAST reference file $(ref_path)")
+            endif
+        endif
+    endif
+endif
+
+#
+# List command-line goals and variable arguments
+#
+ifneq ($(in),)
+    $(info hyb: $(shell date))
+    $(info $(MAKECMDGOALS))
+    $(info $(foreach var,$(args),$(var)=$($(var))))
+endif
+
+# all clipped and quality filtered reads
+ALL = clipped_qf
+
+# compressed, clipped and quality filtered reads
+COMP = comp
+
+#
+# PREPROCESS
+#
+FASTQ = \
+	$(ALL).fastq
+
+TAB = \
+	$(ALL).tab
+
+FASTA = \
+	$(COMP).fasta
+
+#
+# CHECK
+#
+
+# QC report
+QC = \
+	$(ALL)_fastqc.zip
+
+# histogram of all reads
+HIST_ALL = \
+	$(ALL).hist
+
+# histogram of compressed reads
+HIST = \
+	$(COMP).hist
+
+#
+# DETECT
+#
+BLAST = \
+	$(COMP)_$(db).blast
+MTOP_BLAST = \
+	$(COMP)_$(db)_mtophits.blast
+MTOP_REF = \
+	$(COMP)_$(db)_mtophits.ref
+SINGLE = \
+	$(COMP)_$(db)_singleE.blast
+SINGLE_STATS = \
+	$(COMP)_$(db)_singleE.blast_stats.txt
+HYB_FASTA = \
+	$(COMP)_$(db)_hybrids.fasta
+HYBRIDS = \
+	$(COMP)_$(db)_hybrids.hyb
+HYB_UA = \
+	$(COMP)_$(db)_hybrids_ua.hyb
+HYB_STATS = \
+	$(COMP)_$(db)_hybrids.hyb_stats.txt
+
+#
+# ANALYSE
+#
+HYB_UA_MERGED = \
+	$(COMP)_$(db)_hybrids_ua_merged.hyb
+BIT_1 = \
+	$(COMP)_$(db)_hybrids_ua.bit_1.fasta
+BIT_2 = \
+	$(COMP)_$(db)_hybrids_ua.bit_2.fasta
+MERGED = \
+	$(COMP)_$(db)_hybrids_ua.merged
+MERGED_RNAUP = \
+	$(COMP)_$(db)_hybrids_ua.rnaup
+VIENNA = \
+        $(COMP)_$(db)_hybrids_ua.vienna
+VIENNAD = \
+        $(COMP)_$(db)_hybrids_ua.viennad
+HYB_DG = \
+	$(COMP)_$(db)_hybrids_ua_dg.hyb
+
+#
+# Temporary work/log files
+#
+WORK = \
+	$(id)_$(COMP)_$(db).blast.err \
+	$(id)_$(COMP)_$(db)_hybrids_ua.bit_1.fasta-$(COMP)_$(db)_hybrids_ua.bit_2.fasta.ct \
+	$(id).log \
+	$(id)_TEMP_FILE1_TAB \
+	$(id)_TEMP_FILE1_TXT
+
+#
+# hyb output files
+#
+ifeq ($(format),fastq)
+PREPROCESS = \
+	$(id)_$(FASTQ) \
+	$(id)_$(TAB) \
+	$(id)_$(FASTA)
+else ifeq ($(format),fasta)
+PREPROCESS = \
+	$(id)_$(TAB) \
+	$(id)_$(FASTA)
+endif
+ifeq ($(format),fastq)
+CHECK = \
+	$(id)_$(QC) \
+	$(id)_$(HIST_ALL) \
+	$(id)_$(HIST)
+else ifeq ($(format),fasta)
+CHECK = \
+	$(id)_$(HIST_ALL) \
+	$(id)_$(HIST)
+endif
+DETECT = \
+	$(id)_$(BLAST) \
+	$(id)_$(MTOP_BLAST) \
+	$(id)_$(MTOP_REF) \
+	$(id)_$(SINGLE) \
+	$(id)_$(SINGLE_STATS) \
+	$(id)_$(HYB_FASTA) \
+	$(id)_$(HYBRIDS) \
+	$(id)_$(HYB_UA)
+ANALYSE = \
+	$(id)_$(HYB_UA_MERGED) \
+	$(id)_$(BIT_1) \
+	$(id)_$(BIT_2) \
+	$(id)_$(VIENNA) \
+	$(id)_$(VIENNAD) \
+	$(id)_$(HYB_DG) \
+	$(id)_$(HYB_STATS)
+
+#
+# hyb targets
+#
+TARGETS = $(PREPROCESS) $(CHECK) $(DETECT) $(ANALYSE)
+
+#
+# Default action unless goal is specified on command-line
+#
+ifeq ($(in),)
+
+# no input file
+all: help
+else
+all: run
+	@echo "hyb: run finished - $$(date)"
+endif
+
+#
+# Display hyb usage
+#
+help:
+	@echo ""
+	@echo "usage:"
+	@echo "       hyb demultiplex in=file code=file"
+	@echo "       hyb [preprocess] [check] in=file"
+	@echo "       hyb [detect] [analyse] in=file db=name"
+	@echo "       hyb [help] [list]"
+	@echo ""
+	@echo "tasks:"
+	@echo "       demultiplex - bar-coded reads"
+	@echo "       preprocess - clip vector and quality trim reads"
+	@echo "       check - run QC checks"
+	@echo "       detect - hybrids"
+	@echo "       analyse - hybrids"
+	@echo "       help - display help summary"
+	@echo "       list - (db) databases and (ref) files"
+	@echo ""
+	@echo "input:"
+	@echo "       in=file - (or file.gz) of raw reads in FASTQ format"
+	@echo "       id=name - sample id (default=name of input file)"
+	@echo "       format=type - fastq (default), fasta, comp, blast"
+	@echo "       code=file - containing bar-codes and sample ID's"
+	@echo "       miss=value - mismatches in bar-code (default=0)"
+	@echo ""
+	@echo "quality control:"
+	@echo "       qc=name - quality control: none, fastx, flexbar(default)"
+	@echo "       qual=value - FASTQ quality offset (default=auto)"
+	@echo "       link=sequence - 3' linker (default=TGGAATTCTCGGGTGCCAAGGC)"
+	@echo "       min=value - min alignment for adapter clip (default=4)"
+	@echo "       len=value - min read-length after clip/trim (default=17)"
+	@echo "       trim=value - quality trim threshold (default=0)"
+	@echo "       filt=value - quality filter threshold (default=0)"
+	@echo "       pc=value - percent >= filter threshold (default=0)"
+	@echo ""
+	@echo "read alignment:"
+	@echo "       align=type - none, blastall, blastn, blat, pblat, bowtie2(default)"
+	@echo "       db=name - database to align against"
+	@echo "       word=value - query word size (default=11)"
+	@echo "       eval=value - query E-value threshold (default=0.1)"
+	@echo ""
+	@echo "hybrid detection:"
+	@echo "       ref=file - hit priority reference file"
+	@echo "       anti=flag - allow antisense hits: 1, 0 (default)"
+	@echo "       type=name - hybrid type: mim, sno, all(default)"
+	@echo "       fold=type - RNA folding: vienna, UNAfold(default)"
+	@echo "       pref=type - prefer hybrid: none, mim (default)"
+	@echo "       hval=value - hybrid selection threshold (default=0.1)"
+	@echo "       hmax=value - max hits per hybrid (default=10)"
+	@echo "       gmax=value - max gap/overlap between hybrid bits (default=4)"
+	@echo ""
+
+#
+# Display (db) databases and (ref) files
+#
+list:
+	@cd $(HYB_DB); echo; echo "(db) databases:"; ls *.nin | sed -e 's/\.nin$$//' -e 's/\.fasta$$//'
+	@cd $(HYB_REF); echo; echo "(ref) files:"; ls *.ref | sed 's/\.ref$$//'
+
+#
+# Display run parameters
+#
+dry-run:
+	@echo "in = $(in)"
+	@echo "db = $(db)"
+	@echo "ref = $(ref)"
+	@echo "code = $(code)"
+	@echo
+	@echo "CORES = $(CORES)"
+	@echo "id = $(id)"
+	@echo "read = $(read)"
+	@echo "qual = $(qual)"
+	@echo "db_name = $(db_name)"
+	@echo "db_path = $(db_path)"
+	@echo "db_tab = $(db_tab)"
+	@echo "ref_path = $(ref_path)"
+	@echo "SAMPLES = $(SAMPLES)"
+	@echo
+	@echo "$@: complete"
+
+#
+# Pre-process and check input file
+#
+ifeq ($(in),)
+preprocess check:
+	$(error "hyb: need in= to $@")
+
+else ifeq ($(qc),none)
+preprocess check:
+	$(error "hyb: can't $@ with qc=none")
+
+else ifneq ($(code),)
+preprocess check: run
+
+else
+preprocess: $(PREPROCESS)
+
+check: $(CHECK)
+
+endif
+
+#
+# Analyse data
+#
+ifeq ($(and $(in),$(db)),)
+analyse detect:
+	$(error "hyb: need in= and db= to $@")
+
+else ifneq ($(code),)
+analyse detect: run
+
+else
+analyse: detect $(ANALYSE)
+
+detect: $(DETECT)
+
+endif
+
+#
+# Output debugging information
+#
+debug:
+	@echo "MAKELEVEL = $(MAKELEVEL)"
+	@echo "MAKEFLAGS = $(MAKEFLAGS)"
+	@echo "MAKECMDGOALS = $(MAKECMDGOALS)"
+	@echo "HYB_HOME = $(HYB_HOME)"
+	@echo "PATH = $(PATH)"
+	@echo "$(MAKE) -f $(MAKEFILE_LIST)"
+
+	@echo; echo "Directories:"
+	@for i in $(DIRECTORIES); do \
+		echo $$i; \
+	done
+
+	@echo; echo "Internal programs:"
+	@for i in $(INTERNAL); do \
+		echo $$i; \
+	done
+
+	@echo; echo "External programs:"
+	@for i in $(EXTERNAL); do \
+		echo $$i; \
+	done
+
+	@echo; echo "PREPROCESS:"
+	@for i in $(PREPROCESS); do \
+		echo $$i; \
+	done
+	@echo; echo "CHECK:"
+	@for i in $(CHECK); do \
+		echo $$i; \
+	done
+	@echo; echo "ANALYSE:"
+	@for i in $(ANALYSE); do \
+		echo $$i; \
+	done
+	@echo; echo "DETECT:"
+	@for i in $(DETECT); do \
+		echo $$i; \
+	done
+	@echo; echo "IDENTIFY:"
+	@for i in $(IDENTIFY); do \
+		echo $$i; \
+	done
+	@echo; echo "MAP:"
+	@for i in $(MAP); do \
+		echo $$i; \
+	done
+	@echo; echo "PROFILE:"
+	@for i in $(PROFILE); do \
+		echo $$i; \
+	done
+	@echo; echo "REPORT:"
+	@for i in $(REPORT); do \
+		echo $$i; \
+	done
+
+#
+# Run pipeline
+#
+ifeq ($(code),)
+
+# run single input file
+run: $(read)
+	@echo "hyb: running at MAKELEVEL $(MAKELEVEL)"
+	@echo "hyb: run started - $$(date)"
+
+else ifdef parallel
+
+# run list of input files concurrently
+run: $(SAMPLES)
+	for i in $(SAMPLES); do \
+	    log="$$(basename $${i%.*}).log"; \
+	    echo "hyb: $$(date)" >> $$log; \
+	    echo "nice $(MAKE) -f $(MAKEFILE_LIST) -l $(CORES) -$(MAKEFLAGS) $(MAKECMDGOALS) in=$$i >> $$log 2>&1 &" >> $$log; \
+	    { nice $(MAKE) -f $(MAKEFILE_LIST) -l $(CORES) -$(MAKEFLAGS) $(MAKECMDGOALS) in=$$i >> $$log 2>&1 & }; \
+	done
+
+else
+
+# run list of input files sequentially
+run: $(SAMPLES)
+	for i in $(SAMPLES); do \
+	    log="$$(basename $${i%.*}).log"; \
+	    echo "hyb: $$(date)" >> $$log; \
+	    echo "nice $(MAKE) -f $(MAKEFILE_LIST) -l $(CORES) -$(MAKEFLAGS) $(MAKECMDGOALS) in=$$i >> $$log 2>&1" >> $$log; \
+	    nice $(MAKE) -f $(MAKEFILE_LIST) -l $(CORES) -$(MAKEFLAGS) $(MAKECMDGOALS) in=$$i >> $$log 2>&1; \
+	done
+
+endif
+
+#
+# parse random + non-random barcode + strip from read
+#
+ifeq ($(code),)
+demultiplex:
+	$(error "hyb: can't demultiplex samples without a bar-code file")
+
+else
+$(SAMPLES): demultiplex
+
+demultiplex: $(read)
+	$(BARCODES) M=$(miss) $(code) $<
+	wc -l $(SAMPLES) others.txt | \
+	    awk 'BEGIN{print"   hyb: FASTQ reads demultiplexed from \"$(read)\":\n"}; \
+	    {printf"%8d %s\n", $$1/4, $$2}' > $@
+endif
+
+#
+# Unzip archive of reads
+#
+ifeq ($(suffix $(in)),.gz)
+$(read): $(in)
+	gunzip -c $< > $@
+endif
+
+#
+# Quality control of reads
+#
+ifeq ($(format),fastq)
+    ifeq ($(qc),none)
+%_$(FASTQ):
+	[ $(in) != $@ ] && ln -sf $(in) $@
+
+    else ifeq ($(qc),fastx)
+
+        # Quality trim
+        ifeq ($(trim), 0)
+            TRIM = cat
+        else
+            TRIM = $(FASTX_TRIM) -Q $(qual) -t $(trim) -l $(len) -i
+        endif
+
+        # Quality filter
+        ifeq ($(filt), 0)
+            FILT = cat
+        else ifeq ($(pc),0)
+            FILT = $(FASTX_FILT) -Q $(qual) -q $(filt)
+        else
+            FILT = $(FASTX_FILT) -Q $(qual) -q $(filt) -p $(pc)
+        endif
+
+        # Adapter clip
+        ifeq ($(min), 0)
+            CLIP = cat
+        else
+            CLIP = $(FASTX_CLIP) -Q $(qual) -a $(link) -l $(len) -M $(min)
+        endif
+
+%_$(FASTQ): $(read)
+	$(TRIM) $< | $(FILT) | $(CLIP) > $@
+
+    else ifeq ($(qc),flexbar)
+
+        # FASTQ format
+        ifneq ($(in),)
+            ifeq ($(filter $(qual),33 59 64),)
+                $(error "hyb: Flexbar quality offset qual=$(qual) not supported")
+            endif
+        endif
+        ifneq ($(filter $(FLEXBAR_VERSION),2.33 2.34),)
+            ifeq ($(qual),33)
+                FORMAT = fastq-sanger
+            else ifeq ($(qual),59)
+                FORMAT = fastq-solexa
+            else ifeq ($(qual),64)
+                FORMAT = fastq-i1.5
+            endif
+        else
+            ifeq ($(qual),33)
+                FORMAT = sanger
+            else ifeq ($(qual),59)
+                FORMAT = solexa
+            else ifeq ($(qual),64)
+                FORMAT = i1.5
+            endif
+        endif
+ 
+       # Quality trim
+        ifeq ($(trim), 0)
+            TRIM = 
+        else
+            TRIM = -q $(trim)
+        endif
+
+        # Quality filter
+        ifneq ($(filt), 0)
+            $(error "hyb: Flexbar does not support filtering by quality")
+        endif
+
+        # Adapter clip
+        ifeq ($(min), 0)
+            CLIP =
+        else
+            CLIP = -as $(link) -ao $(min)
+        endif
+
+%_$(FASTQ): $(read)
+	$(FLEXBAR) -t $*_$(ALL) -f $(FORMAT) -r $< $(TRIM) $(CLIP) $(FLEXBAR_PARAM)
+
+    else
+        $(error "hyb: qc=$(qc) not implemented")
+    endif
+endif
+
+#
+# Compress reads
+#
+ifeq ($(format),blast)
+    comp_fasta = $(word 1,$(subst _comp_, ,$(in)))_comp.fasta
+    ifeq ($(wildcard $(comp_fasta)),)
+        $(error "hyb: can't locate $(comp_fasta) from $(in)")
+    endif
+%_$(FASTA): 
+	[ $(comp_fasta) != $@ ] && ln -sf $(comp_fasta) $@
+
+else ifeq ($(format),comp)
+%_$(FASTA):
+	[ $(in) != $@ ] && ln -sf $(in) $@
+
+else ifeq ($(format),fasta)
+%_$(TAB):
+	$(FASTA2TAB) $(in) > $@
+
+%_$(FASTA): %_$(TAB)
+	$(TAB2COMP) $< > $@
+
+else ifeq ($(format),fastq)
+%_$(TAB): %_$(FASTQ)
+	$(SOLEXA2FASTA) $< | $(FASTA2TAB) > $@
+
+%_$(FASTA): %_$(TAB)
+	$(TAB2COMP) $< > $@
+endif
+
+#
+# Quality Control
+#
+%_$(QC): %_$(FASTQ)
+	$(FASTQC) $(FASTQC_PARAM) --noextract --contaminants $(HYB_DATA)/fastqc/Contaminants $<
+
+#
+# Histogram of all reads
+#
+%_$(HIST_ALL): %_$(FASTQ)
+	awk '{if(NR%4==2) print length($$1)}' $< | $(HISTOGRAM) -n > $@
+
+#
+# Histogram of compressed reads
+#
+%_$(HIST): %_$(FASTA)
+	$(FASTA2TAB) $< | awk '{print (length($$2))}' | $(HISTOGRAM) -n > $@
+
+#
+# Align reads
+#
+ifeq ($(align),none)
+    ifneq ($(format),blast)
+        $(error "hyb: need format=blast to use align=none")
+    else
+%_$(BLAST):
+	[ $(in) != $@ ] && ln -sf $(in) $@
+
+    endif
+
+else ifeq ($(align),blastall)
+%_$(BLAST): %_$(FASTA)
+	( $(BLASTALL) $(BLASTALL_PARAM) -p blastn -d $(db_path) -i $< -o $@ -m 8 $(BLASTALL_PARAM) ) 2> $@.err
+ifneq ($(mode),debug)
+	rm $@.err
+endif
+
+else ifeq ($(align),blastn)
+%_$(BLAST): %_$(FASTA)
+	$(BLASTN) $(BLASTN_PARAM) -db $(db_path) -query $< -out $@ -outfmt 6 2> $@.err
+ifneq ($(mode),debug)
+	rm $@.err
+endif
+
+else ifeq ($(align),blat)
+%_$(BLAST): %_$(FASTA)
+	$(BLAT) $(BLAT_PARAM) -out=blast8 $(db_path) $< $(TMP)/$$$$.blat 2> $@.err; \
+	awk '$$11<$(eval)' $(TMP)/$$$$.blat > $@; \
+	rm $(TMP)/$$$$.blat
+ifneq ($(mode),debug)
+	rm $@.err
+endif
+
+else ifeq ($(align),pblat)
+%_$(BLAST): %_$(FASTA)
+	$(PBLAT) $(PBLAT_PARAM) -out=blast8 $(db_path) $< $$$$.pblat 2> $@.err; \
+	awk '$$11<$(eval)' $$$$.pblat > $@; \
+	rm $(TMP)/$$$$.pblat
+ifneq ($(mode),debug)
+	rm $@.err
+endif
+
+else ifeq ($(align),bowtie2)
+%_$(BLAST): %_$(FASTA)
+	$(BOWTIE2) $(BOWTIE2_PARAM) -x $(db_path) -f $< > $(TMP)/$$$$.sam 2> $@.err; \
+	sam2blast $(TMP)/$$$$.sam > $@; \
+	rm $(TMP)/$$$$.sam
+ifneq ($(mode),debug)
+	rm $@.err
+endif
+
+else
+	$(error "hyb: can't use $(align) alignment")
+endif
+
+#
+# Select only the top hits
+#
+%_$(MTOP_BLAST): %_$(BLAST)
+	$(MTOPHITS) $< > $@
+
+#
+# Create reference file
+#
+%_$(MTOP_REF): %_$(MTOP_BLAST)
+ifeq ($(ref),)
+	$(CREATE_REF) $< > $@
+else
+	ln -sf $(ref) $@
+endif
+
+#
+# Remove duplicate hits - select only the top hits
+#
+%_$(SINGLE): %_$(MTOP_REF) %_$(MTOP_BLAST)
+	$(REMOVE_DUP_HIT) $^ > $@
+
+#
+# Get hybrids (MODE=1 allow, 2 reject antisense hits)
+#
+ifeq ($(anti),0)
+    MTOP_MODE=2
+else
+    MTOP_MODE=1
+endif
+%_TEMP_FILE1_TXT: %_$(BLAST)
+	$(GET_MTOP) BLAST_THRESHOLD=$(hval) MODE=$(MTOP_MODE) MAX_OVERLAP=$(gmax) MAX_HITS_PER_SEQUENCE=$(hmax) OUTPUT_FORMAT=HYB $< > $@
+
+#
+# Convert hybrids to FASTA
+#
+%_$(HYB_FASTA): %_TEMP_FILE1_TXT %_$(FASTA)
+	$(GET_SEQ) $^ > $@
+
+#
+# Convert hybrids to TAB
+#
+%_TEMP_FILE1_TAB: %_$(HYB_FASTA)
+	$(FASTA2TAB) $< > $@
+
+#
+# Convert hybrids to .hyb
+#
+%_$(HYBRIDS): %_TEMP_FILE1_TAB %_TEMP_FILE1_TXT
+	$(TXT2HYB) $^ > $@
+
+#
+# Select unambiguous hybrids
+#
+ifeq ($(pref),mim)
+    DUP_MODE=1
+else
+    DUP_MODE=0
+endif
+%_$(HYB_UA): %_$(MTOP_REF) %_$(HYBRIDS)
+ifeq ($(type),all)
+	$(REMOVE_DUP_HYB) PREFER_MIM=$(DUP_MODE) $^ > $@
+else ifeq ($(type),mim)
+	-$(REMOVE_DUP_HYB) PREFER_MIM=$(DUP_MODE) $^ | grep microRNA | grep mRNA > $@
+else ifeq ($(type),sno)
+	-$(REMOVE_DUP_HYB) PREFER_MIM=$(DUP_MODE) $^ | grep snoRNA > $@
+else
+	$(error "hyb: type=$(type) not implemented")
+endif
+	@if [ ! -s $@ ]; then echo "hyb: no type=$(type) hybrids detected"; false; fi
+
+#
+# Calculate folding energies of hybrids
+#
+%_$(BIT_1) %_$(BIT_2): %_$(HYB_UA)
+ifeq ($(type),mim)
+	$(HYB2FASTA_MIM) NT_EXTEND_mRNA=25 GET_FULL_miRNA=1 $(db_tab) $<
+else
+	$(HYB2FASTA) $(db_tab) $<
+endif
+
+ifeq ($(fold),UNAfold)
+%_$(BIT_1)-$(BIT_2).ct: %_$(BIT_1) %_$(BIT_2)
+	$(HYBRID_MIN) $^ 2>&1 > /dev/null
+	mv $*_$(BIT_1)-$*_$(BIT_2).ct $@
+	rm $*_$(BIT_1)-$*_$(BIT_2).run
+	rm $*_$(BIT_1)-$*_$(BIT_2).37.plot
+	rm $*_$(BIT_1)-$*_$(BIT_2).37.ext
+	rm $*_$(BIT_1)-$*_$(BIT_2).dG
+	rm $*_$(BIT_1)-$*_$(BIT_2).asc
+
+%_$(VIENNA): %_$(BIT_1)-$(BIT_2).ct
+	$(CT2B) $< > $@
+
+else ifeq ($(fold),vienna)
+%_$(MERGED): %_$(BIT_1) %_$(BIT_2)
+	paste $^ | awk 'NR%2==1{print $$1"-"$$2}; NR%2==0{print $$1"&"$$2}'|sed 's/->/-/g' > $@
+
+%_$(MERGED_RNAUP): %_$(MERGED)
+	$(RNAUP) --interaction_pairwise -o -w 20 < $< > $@ 2> /dev/null
+
+%_$(VIENNA): %_$(MERGED_RNAUP) %_$(MERGED)
+	$(MAKE_VIENNA) $^ > $@ 
+endif
+
+%_$(VIENNAD): %_$(VIENNA)
+	$(NICER_VIENNA) $< > $@
+
+#
+# Add folding energies to hyb file
+#
+%_$(HYB_DG): %_$(HYB_UA) %_$(VIENNA)
+	$(ADD_DG_HYB) $^ >$@
+
+#
+# Merge similar chimeras
+#
+%_$(HYB_UA_MERGED): %_$(HYB_DG)
+	$(COMBINE_HYB) TWO_WAY_MERGE=1 PRINT_SEQ_IDS=1 $< > $@
+
+%_$(SINGLE_STATS): %_$(SINGLE)
+	$(GET_SINGLE_STATS) $^ > $@
+
+%_$(HYB_STATS): %_$(HYB_DG)
+	$(GET_HYB_STATS) $^ > $@
+
+#
+# Delete log files etc.
+#
+ifeq ($(MAKELEVEL),0)
+clean:
+	rm -f *.log nohup.out
+	rm -f *TEMP*
+	rm -f *.ct
+	rm -f *.err
+
+else
+clean:
+endif
+
+#
+# Delete ALL output files
+#
+ifeq ($(and $(in),$(db)),)
+clobber:
+	$(error "hyb: need in= and db= to clobber")
+else ifeq ($(code),)
+    ifneq ($(read),$(in))
+clobber:
+	rm -f $(read)
+	rm -rf $(id)_$(ALL)_fastqc
+	rm -f $(TARGETS)
+	rm -f $(WORK)
+
+    else
+clobber:
+	rm -rf $(id)_$(ALL)_fastqc
+	rm -f $(TARGETS)
+	rm -f $(WORK)
+
+    endif
+else
+clobber: clean run
+	rm -f demultiplex
+	rm -f $(SAMPLES)
+	rm -f others.txt
+endif
+
+#
+# Protect input files
+#
+.PRECIOUS: $(in) $(code) $(ref)
+
+#
+# Keep intermediate files (uncomment for debugging)
+#
+#.SECONDARY:
+
+#
+# Targets that are goals not files
+#
+.PHONY: default help list dry-run run preprocess check detect analyse debug all \
+	clean clobber

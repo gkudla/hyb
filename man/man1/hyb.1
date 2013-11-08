@@ -1,0 +1,230 @@
+.TH HYB "1" "October 2013" "0.0" "User Commands"
+.SH NAME
+hyb \- manual page for hyb 0.0
+.SH DESCRIPTION
+.PP
+.SS "usage:"
+.IP
+hyb demultiplex in=file code=file
+.br
+hyb [preprocess] [check] in=file
+.br
+hyb [detect] [analyse] in=file db=name
+.br
+hyb [help] [list]
+.SS "tasks:"
+.IP
+demultiplex \- bar\-coded reads
+.br
+preprocess \- clip vector and quality trim reads
+.br
+check \- run QC checks
+.br
+detect \- hybrids
+.br
+analyse \- hybrids
+.br
+help \- display help summary
+.br
+list \- (db) databases and (ref) files
+.SS "input:"
+.IP
+in=file \- (or file.gz) of raw reads in FASTQ format
+.br
+id=name \- sample id (default=name of input file)
+.br
+format=type \- fastq (default), fasta, comp
+.br
+code=file \- containing bar\-codes and sample ID's
+.br
+miss=value \- mismatches in bar\-code (default=0)
+.SS "quality control:"
+.IP
+qc=name \- quality control: none, fastx, flexbar(default)
+.br
+qual=value \- FASTQ quality offset (default=auto)
+.br
+link=sequence \- 3' linker (default=TGGAATTCTCGGGTGCCAAGGC)
+.br
+min=value \- min alignment for adapter clip (default=4)
+.br
+len=value \- min read\-length after clip/trim (default=17)
+.br
+trim=value \- quality trim threshold (default=0)
+.br
+filt=value \- quality filter threshold (default=0)
+.br
+pc=value \- percent >= filter threshold (default=0)
+.SS "read alignment:"
+.IP
+align=type \- none, blastall, blastn, blat, pblat, bowtie2(default)
+.br
+db=name \- database to align against
+.br
+word=value \- query word size (default=11)
+.br
+eval=value \- query E\-value threshold (default=0.1)
+.SS "hybrid detection:"
+.IP
+ref=file \- hit priority reference file
+.br
+anti=flag \- allow antisense hits: 1, 0 (default)
+.br
+type=name \- hybrid type: mim, sno, all(default)
+.br
+fold=type \- RNA folding: vienna, UNAfold(default)
+.br
+pref=type \- prefer hybrid: none, mim (default)
+.br
+hval=value \- hybrid selection threshold (default=0.1)
+.br
+hmax=value \- max hits per hybrid (default=10)
+.br
+gmax=value \- max gap/overlap between hybrid bits (default=4)
+.SH "ENVIRONMENT"
+.PP
+HYB_BIN - default: $(shell dirname $(MAKEFILE_LIST))
+.PP
+HYB_HOME - default: $(shell dirname $(HYB_BIN))
+.PP
+HYB_LIB - default: $(HYB_HOME)/lib
+.PP
+HYB_DATA - default: $(HYB_HOME)/data
+.PP
+HYB_DB - default: $(HYB_DATA)/db
+.PP
+HYB_REF - default: $(HYB_DATA)/reference
+.PP
+HYB_GENOME - default: $(HYB_DATA)/genome
+.PP
+TMP - default: .
+.PP
+FASTQ_DETECT - default: $(HYB_BIN)/fastq_detect
+.PP
+BARCODES - default: $(HYB_BIN)/barcodes
+.PP
+SOLEXA2FASTA - default: $(HYB_BIN)/solexa2fasta.awk
+.PP
+FASTA2TAB - default: $(HYB_BIN)/fasta2tab.awk
+.PP
+TAB2COMP - default: $(HYB_BIN)/make_comp_fasta.pl
+.PP
+COLLAPSE - default: $(HYB_BIN)/collapse_barcoded_tab.awk
+.PP
+TAB2FASTA - default: $(HYB_BIN)/tab2fasta.awk
+.PP
+FASTA_LEN - default: $(HYB_BIN)/fasta-len
+.PP
+HISTOGRAM - default: $(HYB_BIN)/histogram.pl
+.PP
+MTOPHITS - default: $(HYB_BIN)/mtophits_blast
+.PP
+CREATE_REF - default: $(HYB_BIN)/create_reference_file.sh
+.PP
+REMOVE_DUP_HIT - default: $(HYB_BIN)/remove_duplicate_hits_blast.pl
+.PP
+GET_MTOP - default: $(HYB_BIN)/get_mtop_hybrids.pl
+.PP
+GET_SEQ - default: $(HYB_BIN)/getseqs
+.PP
+TXT2HYB - default: $(HYB_BIN)/txt2hyb.awk
+.PP
+REMOVE_DUP_HYB - default: $(HYB_BIN)/remove_duplicate_hybrids_hOH5.pl
+.PP
+HYB2FASTA - default: $(HYB_BIN)/hyb2fasta_bits_allRNAs.awk
+.PP
+HYB2FASTA_MIM - default: $(HYB_BIN)/hyb2fasta_bits.awk
+.PP
+CT2B - default: $(HYB_BIN)/Ct2B_GK_3.pl
+.PP
+MAKE_VIENNA - default: $(HYB_BIN)/make_vienna
+.PP
+NICER_VIENNA - default: $(HYB_BIN)/make_nicer_vienna_hOH5.awk
+.PP
+ADD_DG_HYB - default: $(HYB_BIN)/add_dG_hyb.pl
+.PP
+FOLD_VIENNAD - default: $(HYB_BIN)/analyse_miRNA_folding_viennad.sh
+.PP
+FOLD_VIENNAD_GK - default: $(HYB_BIN)/analyse_miRNA_folding_viennad_GK.awk
+.PP
+REARRANGE_BITS - default: $(HYB_BIN)/rearrange_miRNA_mRNA_bits.awk
+.PP
+ANNOTATE_HYB - default: $(HYB_BIN)/make_hybrid_annotation_table.pl
+.PP
+COMBINE_HYB - default: $(HYB_BIN)/combine_hyb_merge
+.PP
+GET_SINGLE_STATS - default: $(HYB_BIN)/blast_stats
+.PP
+GET_HYB_STATS - default: $(HYB_BIN)/hybrid_stats
+.PP
+GET_HYB_HIT - default: $(HYB_BIN)/hybrids_hit_table.pl
+.PP
+GET_HYB_FREQ - default: $(HYB_BIN)/hybrids_stats_2.sh
+.PP
+BLAST_HITS - default: $(HYB_BIN)/blast-hits
+.PP
+EXTRACT - default: $(HYB_BIN)/extract_listed.awk
+.PP
+COMBINE_GFF - default: $(HYB_BIN)/combine_gff_merge_1.2.pl
+.PP
+BLAST2SGR - default: $(HYB_BIN)/blast2sgr.awk
+.PP
+SAM2BLAST - default: $(HYB_BIN)/sam2blast
+.PP
+FASTX_TRIM - default: $(shell which fastq_quality_trimmer)
+.PP
+FASTX_FILT - default: $(shell which fastq_quality_filter)
+.PP
+FASTX_C.PP - default: $(shell which fastx_clipper)
+.PP
+FLEXBAR - default: $(shell which flexbar)
+.PP
+FLEXBAR_PARAM - default: -u 3 -m $(len) -n $(HYB_THREADS)
+.PP
+FASTQC - default: $(shell which fastqc)
+.PP
+FASTQC_PARAM - default: -q -k 8
+.PP
+BLASTALL - default: $(shell which blastall)
+.PP
+BLASTALL_PARAM - default: -W $(word) -e $(eval) -a $(HYB_THREADS)
+.PP
+BLASTN - default: $(shell which blastn)
+.PP
+BLASTN_PARAM - default: -word_size $(word) -evalue $(eval) -num_threads $(HYB_THREADS)
+.PP
+BLAT - default: $(shell which blat)
+.PP
+BLAT_PARAM - default: -stepSize=5 -tileSize=$(word) -minScore=15
+.PP
+PBLAT - default: $(shell which pblat)
+.PP
+PBLAT_PARAM - default: -stepSize=5 -tileSize=$(word) -minScore=15 -threads=$(HYB_THREADS)
+.PP
+BOWTIE2 - default: $(shell which bowtie2)
+.PP
+BOWTIE2_PARAM - default: -D 20 -R 3 -N 0 -L 16 -k 20 --local -i S,1,0.50 --score-min L,18,0 --ma 1 --np 0 --mp 2,2 --rdg 5,1 --rfg 5,1 -p $(HYB_THREADS)
+.PP
+HYBRID_MIN - default: $(shell which hybrid-min)
+.PP
+RNAUP - default: $(shell which RNAup)
+.PP
+CORES - default: 1
+.PP
+CORES - default: $(shell awk '/physical id/{id=$$4};/core id/{print id" "$$4}' $(cpuinfo) | sort | uniq | wc -l)
+.PP
+HYB_THREADS - default: 1
+.PP
+HYB_THREADS - default: $(shell echo $$(($(CORES)/2)))
+.PP
+.SH AUTHOR
+Written by Tony Travis, Greg Kudla and Jonathan Moody
+.SH COPYRIGHT
+Copyright \(co 2013  University of Edinburgh Medical Research Council Institute of Genetics and Molecular Medicine, and Wellcome Trust Centre for Cell Biology
+.PP
+This is free software; see the source for copying conditions.
+There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+.PP
+.SH "SEE ALSO"
+.PP

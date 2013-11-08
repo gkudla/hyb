@@ -1,0 +1,67 @@
+#!/usr/bin/python
+"""
+Take fasta file (with '&' separating the sequences) and output from
+RNAup of the vienna package, and poduce the vienna format expected
+by scripts within hyb
+"""
+import sys
+
+def read_fasta(fp):
+    name, seq = None, []
+    for line in fp:
+        line = line.rstrip()
+        if line.startswith(">"):
+            if name: yield (name, ''.join(seq))
+            name, seq = line, []
+        else:
+            seq.append(line)
+    if name: yield (name, ''.join(seq))
+
+def format_brackets(line, len1, len2):
+    line = line.split()
+    brackets = line[0].split('&')[::-1]
+    brackets[0] = brackets[0].replace(")", "(")
+    brackets[1] = brackets[1].replace("(", ")")
+    pos1 = [int(x) for x in line[3].split(',')]
+    pos2 = [int(x) for x in line[1].split(',')]
+    new1 = ['.'] * len1
+    new2 = ['.'] * len2
+    new1[pos1[0]-1:pos1[1]] = brackets[0]
+    new2[pos2[0]-1:pos2[1]] = brackets[1]
+    col1 = ''.join(new1+new2)
+    col2 = line[4] + ')'
+    return col1 + '\t' + col2
+
+def main(rnaup_file, fasta_file):
+    seqs = {}
+    with open(fasta_file) as fasta:
+        for name, seq in read_fasta(fasta):
+            if not name in seqs:
+                seqs[name] = seq
+            else:
+                if seqs[name] == seq:
+                    pass
+                else:
+                    raise Exception("duplicated sequence name without \
+                             matching sequence %s" % name)
+
+    with open(rnaup_file) as rnaup:
+        name, line, count = None, '', 0
+        for line in rnaup:
+            line = line.strip()
+            if line.startswith(">"):
+                name, count = line, 0
+            elif count == 1:
+                print name.lstrip('>')
+                seq = seqs[name]
+                seq_split = seq.split('&')
+                len1 = len(seq_split[0])
+                len2 = len(seq_split[1])
+                print seq.replace('&','')
+                print format_brackets(line, len1, len2)
+            else:
+                pass
+            count += 1
+        
+if __name__ == "__main__":
+    main(sys.argv[1],sys.argv[2])

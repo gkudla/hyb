@@ -1,0 +1,24 @@
+# @(#)Makefile  2013-11-04  A.J.Travis
+
+#
+# Make shared BLAST, BLAT and Bowtie2 databases
+#
+
+blast = hOH7.nin
+blat = hOH7.2bit hOH7-microRNA.2bit
+bowtie2 = hOH7.1.bt2
+tab = hOH7.tab
+
+all: $(blast) $(blat) $(bowtie2) $(tab)
+
+%.nin: %.fasta
+	makeblastdb -in $^ -dbtype nucl -input_type fasta -hash_index -out $* -logfile $@.log
+
+%.2bit: %.fasta
+	faToTwoBit $< $@
+
+%.1.bt2: %.fasta
+	bowtie2-build $^ $*
+
+%.tab:  %.fasta
+	fasta2tab.awk $< > $@

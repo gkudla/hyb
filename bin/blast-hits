@@ -1,0 +1,17 @@
+#!/usr/bin/perl -w
+# @(#)blast-hits.pl  2012-08-07  A.J.Travis
+
+#
+# extract lengths of BLAST alignments for "crosstab"
+#
+
+while (<>) {
+    chomp;
+    @field = split("\t");
+    $count = $field[0];
+    $count =~ s/.*_//;
+    $rna = $field[1];
+    $rna =~ s/.*_//;
+    $hsp = $field[3];
+    print "$rna\t$hsp\t$count\n";
+}
