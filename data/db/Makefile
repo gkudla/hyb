@@ -1,4 +1,4 @@
-# @(#)Makefile  2013-11-04  A.J.Travis
+# @(#)Makefile  2013-11-08  A.J.Travis
 
 #
 # Make shared BLAST, BLAT and Bowtie2 databases
@@ -22,3 +22,6 @@ all: $(blast) $(blat) $(bowtie2) $(tab)
 
 %.tab:  %.fasta
 	fasta2tab.awk $< > $@
+
+%.fasta: %.fasta.gz
+	gunzip $< > $@
