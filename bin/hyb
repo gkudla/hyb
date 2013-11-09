@@ -20,7 +20,7 @@ SHELL := /bin/bash -o pipefail
 # Default values for command-line arguments
 #
 ifeq ($(MAKECMDGOALS),)
-MAKECMDGOALS = help
+    MAKECMDGOALS = help
 endif
 
 # input and demultiplexing
