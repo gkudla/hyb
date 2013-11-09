@@ -1,5 +1,5 @@
 #!/usr/bin/make -rRf
-# @(#)hyb  2013-12-20  A.J.Travis, G.Kudla and J.Moody
+# @(#)hyb  2013-11-09  A.J.Travis, G.Kudla and J.Moody
 
 #
 # hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
@@ -19,6 +19,9 @@ SHELL := /bin/bash -o pipefail
 #
 # Default values for command-line arguments
 #
+ifeq ($(MAKECMDGOALS),)
+MAKECMDGOALS = help
+endif
 
 # input and demultiplexing
 in ?=
@@ -128,9 +131,10 @@ export PATH := $(HYB_BIN):$(PATH)
 # Other "hyb" directories
 #
 HYB_HOME ?= $(shell dirname $(HYB_BIN))
-ifeq ($(HYB_HOME),.)
+ifeq ($(HYB_HOME),'.')
     HYB_HOME := ..
 endif
+
 HYB_LIB ?= $(HYB_HOME)/lib
 HYB_DATA ?= $(HYB_HOME)/data
 HYB_DB ?= $(HYB_DATA)/db
@@ -202,126 +206,132 @@ gatekeeper := $(foreach file, $(INTERNAL), \
 )
 
 #
-# FastX Toolkit
-# http://hannonlab.cshl.edu/fastx_toolkit/
+# Check all required dependencies are installed unless displaying help
 #
-ifeq ($(qc),fastx)
-    FASTX_TRIM ?= $(shell which fastq_quality_trimmer)
-    FASTX_FILT ?= $(shell which fastq_quality_filter)
-    FASTX_CLIP ?= $(shell which fastx_clipper)
-    ifeq ($(and $(FASTX_TRIM),$(FASTX_FILT),$(FASTX_CLIP)),)
-        $(error "hyb: FastX toolkit not installed")
-    endif
-endif
+ifeq ($(filter help,$(MAKECMDGOALS)),)
 
-#
-# Flexbar
-# http://sourceforge.net/projects/flexbar/
-#
-ifeq ($(qc),flexbar)
-    FLEXBAR ?= $(shell which flexbar)
-    FLEXBAR_PARAM ?= -u 3 -m $(len) -n $(HYB_THREADS)
-    ifeq ($(FLEXBAR),)
-        $(error "hyb: Install Flexbar or set qc=none")
-    else
-        FLEXBAR_VERSION ?= $(word 3, $(shell $(FLEXBAR) --version))
-    endif
-endif
-
-#
-# FastQC
-# http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
-#
-ifneq ($(filter check,$(MAKECMDGOALS)),)
-    FASTQC ?= $(shell which fastqc)
-    FASTQC_PARAM ?= -q -k 8
-    ifeq ($(FASTQC),)
-        $(error "hyb: FASTQC not installed")
-    endif
-endif
-
-#
-# Legacy BLAST
-# ftp://ftp.ncbi.nlm.nih.gov/blast/executables/release/LATEST/
-#
-ifeq ($(align),blastall)
-    BLASTALL ?= $(shell which blastall)
-    BLASTALL_PARAM ?= -W $(word) -e $(eval) -a $(HYB_THREADS)
-    ifeq ($(BLASTALL),)
-        $(error "hyb: Legacy BLAST not installed")
-    endif
-endif
-
-#
-# BLAST+
-# ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
-#
-ifeq ($(align),blastn)
-    BLASTN ?= $(shell which blastn)
-    BLASTN_PARAM ?= -word_size $(word) -evalue $(eval) -num_threads $(HYB_THREADS)
-    ifeq ($(BLASTN),)
-        $(error "hyb: BLAST+ not installed")
-    endif
-endif
-
-#
-# BLAT
-# http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
-#
-ifeq ($(align),blat)
-    BLAT ?= $(shell which blat)
-    BLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15
-    ifeq ($(BLAT),)
-        $(error "hyb: BLAT not installed")
-    endif
-endif
-
-#
-# PBLAT
-# http://code.google.com/p/pblat/
-#
-ifeq ($(align),pblat)
-    PBLAT ?= $(shell which pblat)
-    PBLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15 -threads=$(HYB_THREADS)
-    ifeq ($(PBLAT),)
-        $(error "hyb: PBLAT not installed")
-    endif
-endif
-
-#
-# Bowtie2
-# http://bowtie-bio.sourceforge.net/bowtie2
-#
-ifeq ($(align),bowtie2)
-    BOWTIE2 ?= $(shell which bowtie2)
-    BOWTIE2_PARAM ?= -D 20 -R 3 -N 0 -L 16 -k 20 --local -i S,1,0.50 --score-min L,18,0 --ma 1 --np 0 --mp 2,2 --rdg 5,1 --rfg 5,1 -p $(HYB_THREADS)
-    ifeq ($(BOWTIE2),)
-        $(error "hyb: Bowtie2 not installed")
-    endif
-endif
-
-#
-# UNAfold
-# http://mfold.rna.albany.edu/?q=DINAMelt/software
-#
-ifneq ($(filter analyse,$(MAKECMDGOALS)),)
-    ifeq ($(fold),UNAfold)
-        HYBRID_MIN ?= $(shell which hybrid-min)
-        ifeq ($(HYBRID_MIN),)
-            $(error "hyb: UNAfold not installed")
+    #
+    # FastX Toolkit
+    # http://hannonlab.cshl.edu/fastx_toolkit/
+    #
+    ifeq ($(qc),fastx)
+        FASTX_TRIM ?= $(shell which fastq_quality_trimmer)
+        FASTX_FILT ?= $(shell which fastq_quality_filter)
+        FASTX_CLIP ?= $(shell which fastx_clipper)
+        ifeq ($(and $(FASTX_TRIM),$(FASTX_FILT),$(FASTX_CLIP)),)
+            $(error "hyb: FastX toolkit not installed")
         endif
     endif
-endif
 
-#
-# Vienna RNA package
-# http://www.tbi.univie.ac.at/~ronny/RNA
-#
-ifneq ($(filter analyse,$(MAKECMDGOALS)),)
-    ifeq ($(fold),vienna)
-        RNAUP ?= $(shell which RNAup)
-        ifeq ($(RNAUP),)
-            $(error "hyb: Vienna RNA package not installed")
+    #
+    # Flexbar
+    # http://sourceforge.net/projects/flexbar/
+    #
+    ifeq ($(qc),flexbar)
+        FLEXBAR ?= $(shell which flexbar)
+        FLEXBAR_PARAM ?= -u 3 -m $(len) -n $(HYB_THREADS)
+        ifeq ($(FLEXBAR),)
+            $(error "hyb: Install Flexbar or set qc=none")
+        else
+            FLEXBAR_VERSION ?= $(word 3, $(shell $(FLEXBAR) --version))
+        endif
+    endif
+
+    #
+    # FastQC
+    # http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+    #
+    ifneq ($(filter check,$(MAKECMDGOALS)),)
+        FASTQC ?= $(shell which fastqc)
+        FASTQC_PARAM ?= -q -k 8
+        ifeq ($(FASTQC),)
+            $(error "hyb: FASTQC not installed")
+        endif
+    endif
+
+    #
+    # Legacy BLAST
+    # ftp://ftp.ncbi.nlm.nih.gov/blast/executables/release/LATEST/
+    #
+    ifeq ($(align),blastall)
+        BLASTALL ?= $(shell which blastall)
+        BLASTALL_PARAM ?= -W $(word) -e $(eval) -a $(HYB_THREADS)
+        ifeq ($(BLASTALL),)
+            $(error "hyb: Legacy BLAST not installed")
+        endif
+    endif
+
+    #
+    # BLAST+
+    # ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
+    #
+    ifeq ($(align),blastn)
+        BLASTN ?= $(shell which blastn)
+        BLASTN_PARAM ?= -word_size $(word) -evalue $(eval) -num_threads $(HYB_THREADS)
+        ifeq ($(BLASTN),)
+            $(error "hyb: BLAST+ not installed")
+        endif
+    endif
+
+    #
+    # BLAT
+    # http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
+    #
+    ifeq ($(align),blat)
+        BLAT ?= $(shell which blat)
+        BLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15
+        ifeq ($(BLAT),)
+            $(error "hyb: BLAT not installed")
+        endif
+    endif
+
+    #
+    # PBLAT
+    # http://code.google.com/p/pblat/
+    #
+    ifeq ($(align),pblat)
+        PBLAT ?= $(shell which pblat)
+        PBLAT_PARAM ?= -stepSize=5 -tileSize=$(word) -minScore=15 -threads=$(HYB_THREADS)
+        ifeq ($(PBLAT),)
+            $(error "hyb: PBLAT not installed")
+        endif
+    endif
+
+    #
+    # Bowtie2
+    # http://bowtie-bio.sourceforge.net/bowtie2
+    #
+    ifeq ($(align),bowtie2)
+        BOWTIE2 ?= $(shell which bowtie2)
+        BOWTIE2_PARAM ?= -D 20 -R 3 -N 0 -L 16 -k 20 --local -i S,1,0.50 --score-min L,18,0 --ma 1 --np 0 --mp 2,2 --rdg 5,1 --rfg 5,1 -p $(HYB_THREADS)
+        ifeq ($(BOWTIE2),)
+            $(error "hyb: Bowtie2 not installed")
+        endif
+    endif
+
+    #
+    # UNAfold
+    # http://mfold.rna.albany.edu/?q=DINAMelt/software
+    #
+    ifneq ($(filter analyse,$(MAKECMDGOALS)),)
+        ifeq ($(fold),UNAfold)
+            HYBRID_MIN ?= $(shell which hybrid-min)
+            ifeq ($(HYBRID_MIN),)
+                $(error "hyb: UNAfold not installed")
+            endif
+        endif
+    endif
+
+    #
+    # Vienna RNA package
+    # http://www.tbi.univie.ac.at/~ronny/RNA
+    #
+    ifneq ($(filter analyse,$(MAKECMDGOALS)),)
+        ifeq ($(fold),vienna)
+            RNAUP ?= $(shell which RNAup)
+            ifeq ($(RNAUP),)
+                $(error "hyb: Vienna RNA package not installed")
+            endif
         endif
     endif
 endif
