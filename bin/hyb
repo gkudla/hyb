@@ -1,5 +1,5 @@
 #!/usr/bin/make -rRf
-# @(#)hyb  2013-11-09  A.J.Travis, G.Kudla and J.Moody
+# @(#)hyb  2013-11-20  A.J.Travis, G.Kudla and J.Moody
 
 #
 # hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
@@ -491,7 +491,7 @@ endif
 ifneq ($(db),)
 
     # database index
-    db_name = $(notdir $(basename $(db)))
+    db_name = $(notdir $(db))
     ifneq ($(filter $(align),blastall blastn),)
         db_path = $(HYB_DB)/$(db)
         ifneq ($(mode),debug)
