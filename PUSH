@@ -1,4 +1,0 @@
-# push it to Greg Kudla's repo
-git add .
-git commit
-git push -v -u origin master
