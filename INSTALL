@@ -1,0 +1,76 @@
+#!/bin/bash
+#@(#)INSTALL  2014-11-26  A.J.Travis
+
+#
+# Install "hyb" under Bio-Linux 8
+#
+
+# GitHub repository
+export GITHUB=https://github.com/gkudla/hyb
+
+# installation directory
+if [ $USER == root ]; then
+    export HYB_HOME=/usr/local/hyb
+else
+    export HYB_HOME=${HOME}/hyb
+fi
+
+# download directory must be writeable
+dir=$(pwd)
+if [ ! -w ${dir} ]; then
+    echo "$0: can't write to ${dir}"
+    exit 1
+fi
+
+# check if "hyb" is already installed
+if [ -e ${HYB_HOME} ]; then
+    echo "$0: ${HYB_HOME} already exists - replace it?"
+    read -n 1 key; echo
+    if [ "$key" == "y" ]; then
+        rm -r ${HYB_HOME}
+    else
+        echo "$0: installation cancelled"
+        exit 1
+    fi
+fi
+
+# download and extract zip archive
+wget -nc ${GITHUB}/archive/master.zip
+unzip master.zip
+mv -i hyb-master ${HYB_HOME}
+
+# download and compile BLAT
+wget -nc http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
+unzip blatSrc35.zip
+export MACHTYPE=$(arch)
+mkdir -p ${HOME}/bin/${MACHTYPE}
+cd blatSrc
+make
+
+# move to BLAT installation directory
+if [ $USER == root ]; then
+    mv -i ${HOME}/bin/${MACHTYPE}/* /usr/local/bin/
+else
+    export PATH=${HOME}/bin/${MACHTYPE}:${PATH}
+fi
+
+# build databases
+cd ${HYB_HOME}/data/db
+make
+
+# Flexbar
+if [ ! -x "$(which flexbar)" ]; then
+    if [ $USER == root ]; then
+        aptitude install flexbar
+    else
+        echo "$0: install flexbar to test hyb"
+        exit 1
+    fi
+fi
+
+# test
+cd ${HYB_HOME}/data/fastq
+hyb analyse in=testdata.txt db=hOH7
+
+# finished
+exit 0
