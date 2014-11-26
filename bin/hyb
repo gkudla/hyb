@@ -1,5 +1,5 @@
 #!/usr/bin/make -rRf
-# @(#)hyb  2013-11-20  A.J.Travis, G.Kudla and J.Moody
+# @(#)hyb  2014-11-26  A.J.Travis, G.Kudla and J.Moody
 
 #
 # hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
@@ -763,7 +763,9 @@ help:
 #
 list:
 	@cd $(HYB_DB); echo; echo "(db) databases:"; ls *.nin | sed -e 's/\.nin$$//' -e 's/\.fasta$$//'
+ifneq ($(wildcard $(HYB_REF)/*.ref),)
 	@cd $(HYB_REF); echo; echo "(ref) files:"; ls *.ref | sed 's/\.ref$$//'
+endif
 
 #
 # Display run parameters
