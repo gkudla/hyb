@@ -1,8 +1,14 @@
-# @(#)Makefile  2014-07-02  A.J.Travis
+# @(#)Makefile  2014-11-25  A.J.Travis
 
 #
 # Make shared BLAST, BLAT and Bowtie2 databases
 #
+
+MAKEBLASTDB ?= $(shell which makeblastdb)
+FATOTWOBIT ?= $(shell which faToTwoBit)
+BOWTIE2BUILD ?= $(shell which bowtie2-build)
+FASTA2TAB ?= $(shell which fasta2tab.awk)
+GUNZIP ?= $(shell which gunzip)
 
 blast = hOH7.nin
 blat = hOH7.2bit hOH7-microRNA.2bit
@@ -15,22 +21,45 @@ TARGETS = $(blast) $(blat) $(bowtie2) $(tab)
 all: $(TARGETS)
 
 %.nin: %.fasta
-	makeblastdb -in $^ -dbtype nucl -input_type fasta -hash_index -out $* -logfile $@.log
+ifneq ($(MAKEBLASTDB),)
+	$(MAKEBLASTDB) -in $^ -dbtype nucl -input_type fasta -hash_index -out $* -logfile $@.log
+else
+	@echo "install BLAST to create $@"
+endif
 
 %.2bit: %.fasta
-	faToTwoBit $< $@
+ifneq ($(FATOTWOBIT),)
+	$(FATOTWOBIT) $< $@
+else
+	@echo "install BLAT to create $@"
+endif
 
 %.1.bt2: %.fasta
-	bowtie2-build $^ $*
+ifneq ($(BOWTIE2BUILD),)
+	$(BOWTIE2BUILD) $^ $*
+else
+	@echo "install Bowtie2 to create $@"
+endif
 
 %.tab:  %.fasta
-	fasta2tab.awk $< > $@
+ifneq ($(FASTA2TAB),)
+	$(FASTA2TAB) $< > $@
+else
+	@echo "check hyb/bin is on PATH to create $@"
+endif
 
 %.fasta: %.fasta.gz
-	gunzip -c $< > $@
+ifneq ($(GUNZIP),)
+	 $(GUNZIP) -c $< > $@
+else
+	@echo "install gzip to create $@"
+endif
+
+# keep intermediate files
+.SECONDARY:
 
 clean:
 	rm -f *.log
 
 clobber: clean
-	rm -f $(TARGETS) $(INDEXES)
+	rm -f $(TARGETS) $(INDEXES) *.bt2
