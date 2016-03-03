@@ -1,5 +1,5 @@
 #!/bin/bash
-#@(#)INSTALL  2014-11-26  A.J.Travis
+#@(#)INSTALL  2016-03-03  A.J.Travis
 
 #
 # Install "hyb" under Bio-Linux 8
@@ -14,6 +14,12 @@ if [ $USER == root ]; then
 else
     export HYB_HOME=${HOME}/hyb
 fi
+
+# set PATH for "hyb" test run
+export PATH=${HYB_HOME}/bin:$PATH
+echo "Please add ${HYB_HOME}/bin to your PATH after running the INSTALL script"
+echo "(press any key to continue...)"
+read -n 1 key; echo
 
 # download directory must be writeable
 dir=$(pwd)
@@ -64,6 +70,16 @@ if [ ! -x "$(which flexbar)" ]; then
         aptitude install flexbar
     else
         echo "$0: install flexbar to test hyb"
+        exit 1
+    fi
+fi
+
+# UNAfold
+if [ ! -x "$(which hybrid-min)" ]; then
+    if [ $USER == root ]; then
+        aptitude install bio-linux-oligoarrayaux
+    else
+        echo "$0: install bio-linux-oligoarrayaux to test hyb"
         exit 1
     fi
 fi
