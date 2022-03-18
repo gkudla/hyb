@@ -1,5 +1,11 @@
 #!/usr/bin/awk -f
 
+# This script reads a file in .hyb format, and calculates the overlap (L) between the arms of homotypic chimeras, as described in Gabryelska et al (2022)
+# The scripts outputs a list of homotypic chimeras with the value of L printed in the final column (column 16)
+
+# Usage: hyb_overlaps.awk input.hyb > output.hyb.overlaps
+
+
 BEGIN{ OFS="\t" }
 
 $4==$10{
