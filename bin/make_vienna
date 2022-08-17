@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+#@(#)make_vienna  2022-08-17  last modified by A.J.Travis
 """
 Take fasta file (with '&' separating the sequences) and output from
 RNAup of the vienna package, and poduce the vienna format expected

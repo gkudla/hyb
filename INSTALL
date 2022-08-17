@@ -1,8 +1,8 @@
 #!/bin/bash
-#@(#)INSTALL  2016-03-03  A.J.Travis
+#@(#)INSTALL  2022-08-17  A.J.Travis
 
 #
-# Install "hyb" under Bio-Linux 8
+# Install "hyb" under Ubuntu 20.04 LTS
 #
 
 # GitHub repository
@@ -40,10 +40,19 @@ if [ -e ${HYB_HOME} ]; then
     fi
 fi
 
-# download and extract zip archive
-wget -nc ${GITHUB}/archive/master.zip
-unzip master.zip
-mv -i hyb-master ${HYB_HOME}
+# install hyb files
+mkdir -p ${HYB_HOME}
+rsync -axHP bin lib man data ${HYB_HOME}
+
+# libpng-dev (required to compile BLAT)
+if [ ! -r "/usr/include/libpng16/png.h" ]; then
+    if [ $USER == root ]; then
+        apt install libpng-dev
+    else
+        echo "$0: install libpng-dev to test hyb"
+        exit 1
+    fi
+fi
 
 # download and compile BLAT
 wget -nc http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
@@ -67,9 +76,19 @@ make
 # Flexbar
 if [ ! -x "$(which flexbar)" ]; then
     if [ $USER == root ]; then
-        aptitude install flexbar
+        apt install flexbar
     else
         echo "$0: install flexbar to test hyb"
+        exit 1
+    fi
+fi
+
+# bowtie2
+if [ ! -x "$(which bowtie2)" ]; then
+    if [ $USER == root ]; then
+        apt install bowtie2
+    else
+        echo "$0: install bowtie2 to test hyb"
         exit 1
     fi
 fi
@@ -77,7 +96,10 @@ fi
 # UNAfold
 if [ ! -x "$(which hybrid-min)" ]; then
     if [ $USER == root ]; then
-        aptitude install bio-linux-oligoarrayaux
+        wget http://www.unafold.org/download/oligoarrayaux-3.8.tar.bz2
+	tar xf oligoarrayaux-3.8.tar.bz2
+	cd oligoarrayaux-3.8
+	make install
     else
         echo "$0: install bio-linux-oligoarrayaux to test hyb"
         exit 1

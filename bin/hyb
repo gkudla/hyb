@@ -1,5 +1,5 @@
 #!/usr/bin/make -rRf
-# @(#)hyb  2014-11-26  A.J.Travis, G.Kudla and J.Moody
+# @(#)hyb  2022-08-17  A.J.Travis, G.Kudla and J.Moody
 
 #
 # hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
@@ -1026,7 +1026,7 @@ ifeq ($(format),fastq)
         endif
 
 %_$(FASTQ): $(read)
-	$(FLEXBAR) -t $*_$(ALL) -f $(FORMAT) -r $< $(TRIM) $(CLIP) $(FLEXBAR_PARAM)
+	$(FLEXBAR) -t $*_$(ALL) -r $< $(TRIM) $(CLIP) $(FLEXBAR_PARAM)
 
     else
         $(error "hyb: qc=$(qc) not implemented")
