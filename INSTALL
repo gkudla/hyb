@@ -1,5 +1,5 @@
 #!/bin/bash
-#@(#)INSTALL  2022-08-17  A.J.Travis
+#@(#)INSTALL  2022-08-22  A.J.Travis
 
 #
 # Install "hyb" under Ubuntu 20.04 LTS
@@ -102,6 +102,17 @@ if [ ! -x "$(which hybrid-min)" ]; then
 	make install
     else
         echo "$0: install bio-linux-oligoarrayaux to test hyb"
+        exit 1
+    fi
+fi
+
+# Vienna RNA
+if [ ! -x "$(which RNAfold)" ]; then
+    if [ $USER == root ]; then
+        wget https://www.tbi.univie.ac.at/RNA/download/ubuntu/ubuntu_20_04/viennarna_2.5.1-1_amd64.deb
+        gdebi viennarna_2.5.1-1_amd64.deb
+    else
+        echo "$0: install Vienna RNA to test hyb"
         exit 1
     fi
 fi

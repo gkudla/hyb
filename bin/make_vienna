@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#@(#)make_vienna  2022-08-17  last modified by A.J.Travis
+#@(#)make_vienna  2022-08-22  last modified by A.J.Travis
 """
 Take fasta file (with '&' separating the sequences) and output from
 RNAup of the vienna package, and poduce the vienna format expected
@@ -53,13 +53,13 @@ def main(rnaup_file, fasta_file):
             if line.startswith(">"):
                 name, count = line, 0
             elif count == 1:
-                print name.lstrip('>')
+                print(name.lstrip('>'))
                 seq = seqs[name]
                 seq_split = seq.split('&')
                 len1 = len(seq_split[0])
                 len2 = len(seq_split[1])
-                print seq.replace('&','')
-                print format_brackets(line, len1, len2)
+                print(seq.replace('&',''))
+                print(format_brackets(line, len1, len2))
             else:
                 pass
             count += 1

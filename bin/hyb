@@ -1,5 +1,5 @@
 #!/usr/bin/make -rRf
-# @(#)hyb  2022-08-17  A.J.Travis, G.Kudla and J.Moody
+# @(#)hyb  2022-08-21  A.J.Travis, G.Kudla and J.Moody
 
 #
 # hyb - analysis of CLASH data (Crosslinking Ligation And Sequencing of Hybrids)
@@ -1010,7 +1010,7 @@ ifeq ($(format),fastq)
         ifeq ($(trim), 0)
             TRIM = 
         else
-            TRIM = -q $(trim)
+            TRIM = -qt $(trim)
         endif
 
         # Quality filter
