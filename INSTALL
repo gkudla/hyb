@@ -1,9 +1,22 @@
 #!/bin/bash
-#@(#)INSTALL  2022-08-22  A.J.Travis
+#@(#)INSTALL  2022-09-11  A.J.Travis
 
 #
 # Install "hyb" under Ubuntu 20.04 LTS
 #
+
+# check if package is installed
+installed() {
+    return $(dpkg-query -W -f '${Status}\n' "${1}" 2>&1|awk '/ok installed/{print 0;exit}{print 1}')
+}
+
+pkgs=(wget libpng-dev flexbar bowtie2 make gcc unzip ncbi-blast+ fastqc gdebi-core rnahybrid rsync)
+for pkg in ${pkgs[@]}; do
+    if ! $(installed $pkg) ; then
+        echo sudo apt install -y $pkg
+    fi
+done
+exit 1
 
 # GitHub repository
 export GITHUB=https://github.com/gkudla/hyb
@@ -44,17 +57,7 @@ fi
 mkdir -p ${HYB_HOME}
 rsync -axHP bin lib man data ${HYB_HOME}
 
-# libpng-dev (required to compile BLAT)
-if [ ! -r "/usr/include/libpng16/png.h" ]; then
-    if [ $USER == root ]; then
-        apt install libpng-dev
-    else
-        echo "$0: install libpng-dev to test hyb"
-        exit 1
-    fi
-fi
-
-# download and compile BLAT
+# download and compile BLAT (requires libpng-dev)
 wget -nc http://users.soe.ucsc.edu/~kent/src/blatSrc35.zip
 unzip blatSrc35.zip
 export MACHTYPE=$(arch)
@@ -72,26 +75,6 @@ fi
 # build databases
 cd ${HYB_HOME}/data/db
 make
-
-# Flexbar
-if [ ! -x "$(which flexbar)" ]; then
-    if [ $USER == root ]; then
-        apt install flexbar
-    else
-        echo "$0: install flexbar to test hyb"
-        exit 1
-    fi
-fi
-
-# bowtie2
-if [ ! -x "$(which bowtie2)" ]; then
-    if [ $USER == root ]; then
-        apt install bowtie2
-    else
-        echo "$0: install bowtie2 to test hyb"
-        exit 1
-    fi
-fi
 
 # UNAfold
 if [ ! -x "$(which hybrid-min)" ]; then
