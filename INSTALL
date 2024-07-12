@@ -1,5 +1,5 @@
 #!/bin/bash
-#@(#)INSTALL  2022-09-11  A.J.Travis
+#@(#)INSTALL  2024-07-12  A.J.Travis
 
 #
 # Install "hyb" under Ubuntu 20.04 LTS
@@ -16,7 +16,6 @@ for pkg in ${pkgs[@]}; do
         echo sudo apt install -y $pkg
     fi
 done
-exit 1
 
 # GitHub repository
 export GITHUB=https://github.com/gkudla/hyb
