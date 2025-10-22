@@ -6,7 +6,7 @@ while (<>){
 	chomp;
 	my ($Fld1,$Fld2) = split("\t", $_, -1);
 	if( $.==1 ){
-		if( $_ =~ /^[^\t]*_[A-Z]*\t/ ){
+		if( $_ =~ /^\S*_[A-Z]+\s/ ){
 #			print "collapsing file, assuming random barcode information encoded in read names\n";
 			$barcodes=1;
 		}
@@ -16,7 +16,8 @@ while (<>){
 		}
 	}
 	if ( $barcodes==1 ){
-		@nm = split(/_/, $Fld1, -1);
+		my $read_id = (split(/\s+/, $Fld1))[0];
+		@nm = split(/_/, $read_id, -1);
 		$barcode = $nm[-1];		# the barcode is the fragment of read name after the last '_'
 		$cnt{$Fld2}++;
 		if (!$fnd{$Fld2, $barcode}) {
