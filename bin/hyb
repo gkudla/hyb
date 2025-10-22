@@ -949,8 +949,8 @@ endif
 #
 ifeq ($(format),fastq)
     ifeq ($(qc),none)
-%_$(FASTQ):
-	[ $(in) != $@ ] && ln -sf $(in) $@
+%_$(FASTQ): $(read)
+	[ $(read) != $@ ] && ln -sf $(read) $@
 
     else ifeq ($(qc),fastx)
 
